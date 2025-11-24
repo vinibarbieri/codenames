@@ -131,9 +131,7 @@ export const initializeGame = async (players, mode = 'classic') => {
  */
 export const checkGameResult = async game => {
   // Check if assassin was revealed
-  const assassinCard = game.board.find(
-    card => card.type === 'assassin' && card.revealed
-  );
+  const assassinCard = game.board.find(card => card.type === 'assassin' && card.revealed);
 
   if (assassinCard) {
     // Team that revealed assassin loses
@@ -145,12 +143,8 @@ export const checkGameResult = async game => {
   }
 
   // Count revealed cards by team
-  const revealedRed = game.board.filter(
-    card => card.type === 'red' && card.revealed
-  ).length;
-  const revealedBlue = game.board.filter(
-    card => card.type === 'blue' && card.revealed
-  ).length;
+  const revealedRed = game.board.filter(card => card.type === 'red' && card.revealed).length;
+  const revealedBlue = game.board.filter(card => card.type === 'blue' && card.revealed).length;
 
   // Check for victory
   if (revealedRed === 9) {
@@ -192,9 +186,7 @@ export const updatePlayerScores = async game => {
   // Update scores for all players
   const updatePromises = game.players.map(async player => {
     const isWinner = player.team === game.winner;
-    const points = isWinner
-      ? baseWinPoints + fastWinBonus
-      : baseLosePoints;
+    const points = isWinner ? baseWinPoints + fastWinBonus : baseLosePoints;
 
     await User.findByIdAndUpdate(player.userId, {
       $inc: { score: points },

@@ -140,17 +140,13 @@ gameSchema.methods.hasPlayer = function (userId) {
 
 // Method to get player's team
 gameSchema.methods.getPlayerTeam = function (userId) {
-  const player = this.players.find(
-    p => p.userId.toString() === userId.toString()
-  );
+  const player = this.players.find(p => p.userId.toString() === userId.toString());
   return player ? player.team : null;
 };
 
 // Method to get player's role
 gameSchema.methods.getPlayerRole = function (userId) {
-  const player = this.players.find(
-    p => p.userId.toString() === userId.toString()
-  );
+  const player = this.players.find(p => p.userId.toString() === userId.toString());
   return player ? player.role : null;
 };
 
