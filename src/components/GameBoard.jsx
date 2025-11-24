@@ -9,15 +9,17 @@ import GameCard from './GameCard';
  * @param {function} props.onCardClick - Callback ao clicar em uma carta (recebe index)
  * @param {boolean} [props.disabled=false] - Se o tabuleiro está desabilitado
  * @param {number} [props.shakingCardIndex=null] - Índice da carta que deve animar shake
+ * @param {boolean} [props.showTypes=false] - Se deve mostrar os tipos das cartas (para spymasters)
  *
  * @example
  * <GameBoard
  *   cards={gameBoard}
  *   onCardClick={(index) => handleGuess(index)}
  *   disabled={false}
+ *   showTypes={true}
  * />
  */
-const GameBoard = ({ cards, onCardClick, disabled = false, shakingCardIndex = null }) => {
+const GameBoard = ({ cards, onCardClick, disabled = false, shakingCardIndex = null, showTypes = false }) => {
   if (!cards || cards.length !== 25) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -38,6 +40,7 @@ const GameBoard = ({ cards, onCardClick, disabled = false, shakingCardIndex = nu
             onClick={() => onCardClick(index)}
             disabled={disabled}
             isShaking={shakingCardIndex === index}
+            showType={showTypes}
           />
         ))}
       </div>

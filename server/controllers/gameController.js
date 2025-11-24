@@ -167,7 +167,7 @@ export const giveClue = async (req, res) => {
     game.currentClue = {
       word: word.toUpperCase(),
       number,
-      remainingGuesses: number + 1, // Can make number + 1 guesses
+      remainingGuesses: number, // Número exato de palpites permitidos
     };
 
     await game.save();
@@ -262,27 +262,28 @@ export const makeGuess = async (req, res) => {
     game.board[cardIndex].revealed = true;
     game.currentClue.remainingGuesses -= 1;
 
-    // Check if guess was correct
+    // card já foi declarado acima, apenas usar
     const isCorrectGuess = card.type === playerTeam;
 
-    // If incorrect guess or no guesses remaining, switch turn
-    if (!isCorrectGuess || game.currentClue.remainingGuesses === 0) {
-      game.currentTurn = game.currentTurn === 'red' ? 'blue' : 'red';
-      game.currentClue = {
+    // Check for game result (win/loss) BEFORE changing turn
+    // Pass playerTeam to correctly detect which team revealed the assassin
+    const updatedGame = await checkGameResult(game, playerTeam);
+    const gameEnded = updatedGame.status === 'finished';
+
+    // If incorrect guess or no guesses remaining, switch turn (unless game ended)
+    if (!gameEnded && (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0)) {
+      updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
+      updatedGame.currentClue = {
         word: '',
         number: 0,
         remainingGuesses: 0,
       };
-      game.turnCount += 1;
+      updatedGame.turnCount += 1;
+      await updatedGame.save();
     }
 
-    await game.save();
-
-    // Check for game result (win/loss)
-    const updatedGame = await checkGameResult(game);
-
     // Update player scores if game ended
-    if (updatedGame.status === 'finished') {
+    if (gameEnded) {
       await updatePlayerScores(updatedGame);
     }
 

@@ -145,6 +145,7 @@ const GamePageContent = () => {
               onCardClick={handleCardClick}
               disabled={!canMakeGuess}
               shakingCardIndex={shakingCardIndex}
+              showTypes={isSpymaster}
             />
           </div>
 

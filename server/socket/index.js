@@ -1,6 +1,6 @@
 import winston from 'winston';
 import QueueService from '../services/QueueService.js';
-import { initializeGame } from '../services/gameService.js';
+import { initializeGame, checkGameResult } from '../services/gameService.js';
 import Game from '../models/Game.js';
 
 // Configurar logger Winston
@@ -315,7 +315,7 @@ const initializeSocketIO = io => {
         game.currentClue = {
           word,
           number,
-          remainingGuesses: number + 1, // +1 porque pode errar uma vez
+          remainingGuesses: number, // Número exato de palpites permitidos
         };
 
         await game.save();
@@ -388,18 +388,22 @@ const initializeSocketIO = io => {
         const card = game.board[cardIndex];
         const isCorrectGuess = card.type === playerTeam;
 
-        // Se palpite incorreto ou sem palpites restantes, mudar turno
-        if (!isCorrectGuess || game.currentClue.remainingGuesses === 0) {
-          game.currentTurn = game.currentTurn === 'red' ? 'blue' : 'red';
-          game.currentClue = {
+        // Verificar se o jogo terminou (assassino ou vitória)
+        // Passar playerTeam para detectar corretamente qual time revelou o assassino
+        const updatedGame = await checkGameResult(game, playerTeam);
+        const gameEnded = updatedGame.status === 'finished';
+
+        // Se palpite incorreto ou sem palpites restantes, mudar turno (a menos que o jogo tenha terminado)
+        if (!gameEnded && (!isCorrectGuess || game.currentClue.remainingGuesses === 0)) {
+          updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
+          updatedGame.currentClue = {
             word: '',
             number: 0,
             remainingGuesses: 0,
           };
-          game.turnCount += 1;
+          updatedGame.turnCount += 1;
+          await updatedGame.save();
         }
-
-        await game.save();
 
         // Broadcast revelação para todos no jogo
         io.to(`game:${gameId}`).emit('game:reveal', {
@@ -408,12 +412,28 @@ const initializeSocketIO = io => {
           isCorrect: isCorrectGuess,
         });
 
-        // Se mudou turno, broadcast turno
-        if (!isCorrectGuess || game.currentClue.remainingGuesses === 0) {
+        // Se o jogo terminou, emitir evento de fim de jogo e estado atualizado
+        if (gameEnded) {
+          // Enviar estado completo do jogo para todos os jogadores
+          const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+          for (const socketInGame of socketsInGame) {
+            if (socketInGame.userId) {
+              const userRole = updatedGame.getPlayerRole(socketInGame.userId);
+              socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
+            }
+          }
+          
+          io.to(`game:${gameId}`).emit('game:end', {
+            winner: updatedGame.winner,
+            reason: card.type === 'assassin' ? 'assassin' : 'victory',
+          });
+          logger.info(`Jogo ${gameId} finalizado. Vencedor: ${updatedGame.winner}`);
+        } else if (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0) {
+          // Se mudou turno, broadcast turno
           io.to(`game:${gameId}`).emit('game:turn', {
-            currentTurn: game.currentTurn,
-            turnCount: game.turnCount,
-            currentClue: game.currentClue,
+            currentTurn: updatedGame.currentTurn,
+            turnCount: updatedGame.turnCount,
+            currentClue: updatedGame.currentClue,
           });
         }
 

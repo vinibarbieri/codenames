@@ -11,17 +11,19 @@ import { useState } from 'react';
  * @param {function} props.onClick - Callback ao clicar na carta
  * @param {boolean} [props.disabled=false] - Se a carta está desabilitada
  * @param {boolean} [props.isShaking=false] - Se deve animar shake (erro)
+ * @param {boolean} [props.showType=false] - Se deve mostrar o tipo mesmo quando não revelado (para spymasters)
  *
  * @example
  * <GameCard
  *   word="BANANA"
  *   revealed={false}
- *   type="hidden"
+ *   type="red"
  *   onClick={() => handleCardClick(0)}
  *   disabled={false}
+ *   showType={true}
  * />
  */
-const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking = false }) => {
+const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking = false, showType = false }) => {
   const [isFlipping, setIsFlipping] = useState(false);
 
   // Cores de fundo para cada tipo de carta quando revelada
@@ -53,9 +55,14 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
     }, 300);
   };
 
-  const cardType = revealed ? type : 'hidden';
+  // Se showType é true (spymaster), mostrar o tipo mesmo quando não revelado
+  // Caso contrário, só mostrar tipo se estiver revelado
+  const cardType = (revealed || showType) && type !== 'hidden' ? type : 'hidden';
   const bgColor = typeColors[cardType] || typeColors.hidden;
   const textColor = typeTextColors[cardType] || typeTextColors.hidden;
+  
+  // Para spymasters, usar opacidade reduzida quando não revelado
+  const opacityClass = showType && !revealed ? 'opacity-70' : '';
 
   return (
     <button
@@ -63,7 +70,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
       disabled={disabled || revealed}
       className={`
         relative w-full aspect-square rounded-lg border-2 transition-all duration-300
-        ${revealed ? `${bgColor} ${textColor} border-gray-600` : 'bg-amber-100 dark:bg-amber-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100'}
+        ${revealed ? `${bgColor} ${textColor} border-gray-600` : showType ? `${bgColor} ${textColor} ${opacityClass} border-gray-400` : 'bg-amber-100 dark:bg-amber-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100'}
         ${disabled || revealed ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95'}
         ${isFlipping ? 'animate-flip' : ''}
         ${isShaking ? 'animate-shake' : ''}
@@ -71,7 +78,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
       `}
     >
       <span className="text-center break-words">{word}</span>
-      {revealed && (
+      {(revealed || (showType && type !== 'hidden')) && (
         <div className="absolute top-1 right-1 text-xs opacity-75">
           {type === 'red' && '🔴'}
           {type === 'blue' && '🔵'}

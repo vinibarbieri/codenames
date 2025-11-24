@@ -127,15 +127,18 @@ export const initializeGame = async (players, mode = 'classic') => {
 /**
  * Check game result and update status if game is over
  * @param {Object} game - Game document
+ * @param {string} [guessingTeam] - Team that made the guess (for assassin detection)
  * @returns {Promise<Object>} Updated game document
  */
-export const checkGameResult = async game => {
+export const checkGameResult = async (game, guessingTeam = null) => {
   // Check if assassin was revealed
   const assassinCard = game.board.find(card => card.type === 'assassin' && card.revealed);
 
   if (assassinCard) {
     // Team that revealed assassin loses
-    game.winner = game.currentTurn === 'red' ? 'blue' : 'red';
+    // Use guessingTeam if provided, otherwise use currentTurn
+    const losingTeam = guessingTeam || game.currentTurn;
+    game.winner = losingTeam === 'red' ? 'blue' : 'red';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
