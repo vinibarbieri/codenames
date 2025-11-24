@@ -127,15 +127,18 @@ export const initializeGame = async (players, mode = 'classic') => {
 /**
  * Check game result and update status if game is over
  * @param {Object} game - Game document
+ * @param {string} [guessingTeam] - Team that made the guess (for assassin detection)
  * @returns {Promise<Object>} Updated game document
  */
-export const checkGameResult = async game => {
+export const checkGameResult = async (game, guessingTeam = null) => {
   // Check if assassin was revealed
   const assassinCard = game.board.find(card => card.type === 'assassin' && card.revealed);
 
   if (assassinCard) {
     // Team that revealed assassin loses
-    game.winner = game.currentTurn === 'red' ? 'blue' : 'red';
+    // Use guessingTeam if provided, otherwise use currentTurn
+    const losingTeam = guessingTeam || game.currentTurn;
+    game.winner = losingTeam === 'red' ? 'blue' : 'red';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
@@ -146,12 +149,16 @@ export const checkGameResult = async game => {
   const revealedRed = game.board.filter(card => card.type === 'red' && card.revealed).length;
   const revealedBlue = game.board.filter(card => card.type === 'blue' && card.revealed).length;
 
-  // Check for victory
+  // Log de depuração
+  console.log(`[checkGameResult] Cartas reveladas - Vermelho: ${revealedRed}/9, Azul: ${revealedBlue}/8`);
+
+  // Check for victory - quando uma equipe acerta todas as suas palavras (0 restantes), o jogo termina
   if (revealedRed === 9) {
     game.winner = 'red';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
+    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Vermelha venceu (9/9 cartas reveladas)`);
     return game;
   }
 
@@ -160,8 +167,11 @@ export const checkGameResult = async game => {
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
+    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Azul venceu (8/8 cartas reveladas)`);
     return game;
   }
+
+  console.log(`[checkGameResult] Jogo continua - Nenhuma equipe completou todas as palavras`);
 
   return game;
 };

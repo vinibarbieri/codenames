@@ -109,15 +109,16 @@ class QueueService {
   }
 
   /**
-   * Busca match (2 jogadores mais antigos na fila)
+   * Busca match (4 jogadores mais antigos na fila para jogo 2x2)
    * @returns {Promise<Array|null>}
    */
   async findMatch() {
     try {
-      const players = await Queue.find().sort({ joinedAt: 1 }).limit(2);
+      const players = await Queue.find().sort({ joinedAt: 1 }).limit(4);
 
-      if (players.length === 2) {
-        logger.info(`Match encontrado entre ${players[0].userId} e ${players[1].userId}`);
+      if (players.length === 4) {
+        const userIds = players.map(p => p.userId.toString());
+        logger.info(`Match encontrado entre ${userIds.join(', ')}`);
         return players;
       }
 

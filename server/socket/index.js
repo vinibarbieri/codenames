@@ -1,6 +1,7 @@
 import winston from 'winston';
 import QueueService from '../services/QueueService.js';
-import { initializeGame } from '../services/gameService.js';
+import { initializeGame, checkGameResult } from '../services/gameService.js';
+import Game from '../models/Game.js';
 
 // Configurar logger Winston
 const logger = winston.createLogger({
@@ -32,56 +33,63 @@ const broadcastQueueUpdate = async io => {
 };
 
 /**
- * Cria um match entre dois jogadores
+ * Cria um match entre 4 jogadores (2x2: 2 jogadores por equipe)
  * @param {Object} io - Instância do Socket.io
- * @param {Object} player1 - Primeiro jogador {userId}
- * @param {Object} player2 - Segundo jogador {userId}
+ * @param {Array} playersArray - Array de 4 jogadores [{userId}, {userId}, {userId}, {userId}]
  */
-const createMatch = async (io, player1, player2) => {
+const createMatch = async (io, playersArray) => {
   try {
-    const userId1 = player1.userId.toString();
-    const userId2 = player2.userId.toString();
+    if (playersArray.length !== 4) {
+      throw new Error('createMatch requer exatamente 4 jogadores');
+    }
+
+    const userIds = playersArray.map(p => p.userId.toString());
 
     // Buscar sockets antes de remover da fila
-    let socket1 = null;
-    let socket2 = null;
+    const sockets = new Map();
 
     // Buscar sockets por userId nos sockets conectados
     io.sockets.sockets.forEach(socket => {
-      if (socket.userId === userId1) {
-        socket1 = socket;
-      }
-      if (socket.userId === userId2) {
-        socket2 = socket;
+      const userId = socket.userId?.toString();
+      if (userIds.includes(userId)) {
+        sockets.set(userId, socket);
       }
     });
 
-    // Remover ambos da fila
-    await QueueService.removeFromQueue(userId1);
-    await QueueService.removeFromQueue(userId2);
-
-    // Remover mapeamentos de sockets
-    userSockets.delete(userId1);
-    userSockets.delete(userId2);
+    // Remover todos da fila
+    for (const userId of userIds) {
+      await QueueService.removeFromQueue(userId);
+      userSockets.delete(userId);
+    }
 
     // Sortear equipes aleatoriamente
-    // Garantir que cada equipe tenha um spymaster
-    const teams = ['red', 'blue'];
-    const shuffledTeams = teams.sort(() => Math.random() - 0.5);
-
+    // Dividir 4 jogadores em 2 equipes (2 por equipe)
+    // Cada equipe terá 1 spymaster e 1 operative
+    const shuffledUserIds = [...userIds].sort(() => Math.random() - 0.5);
+    
     // Atribuir equipes e roles
-    // Para 2 jogadores: cada um será spymaster de sua equipe
-    // Operatives podem ser adicionados depois ou jogados como bots
+    // Red team: primeiro e segundo jogador (1 spymaster + 1 operative)
+    // Blue team: terceiro e quarto jogador (1 spymaster + 1 operative)
     const players = [
       {
-        userId: userId1,
-        team: shuffledTeams[0],
+        userId: shuffledUserIds[0],
+        team: 'red',
         role: 'spymaster',
       },
       {
-        userId: userId2,
-        team: shuffledTeams[1],
+        userId: shuffledUserIds[1],
+        team: 'red',
+        role: 'operative',
+      },
+      {
+        userId: shuffledUserIds[2],
+        team: 'blue',
         role: 'spymaster',
+      },
+      {
+        userId: shuffledUserIds[3],
+        team: 'blue',
+        role: 'operative',
       },
     ];
 
@@ -89,26 +97,20 @@ const createMatch = async (io, player1, player2) => {
     const game = await initializeGame(players, 'classic');
     const gameId = game._id.toString();
 
-    logger.info(
-      `Match criado: gameId=${gameId}, players=[${userId1}(${players[0].team}/${players[0].role}), ${userId2}(${players[1].team}/${players[1].role})]`
-    );
+    const playersInfo = players.map(p => `${p.userId}(${p.team}/${p.role})`).join(', ');
+    logger.info(`Match criado: gameId=${gameId}, players=[${playersInfo}]`);
 
-    // Emitir 'game:matched' para ambos jogadores
-    if (socket1) {
-      socket1.emit('game:matched', {
-        gameId,
-        team: players[0].team,
-        role: players[0].role,
-      });
-    }
-
-    if (socket2) {
-      socket2.emit('game:matched', {
-        gameId,
-        team: players[1].team,
-        role: players[1].role,
-      });
-    }
+    // Emitir 'game:matched' para todos os jogadores
+    players.forEach(player => {
+      const socket = sockets.get(player.userId);
+      if (socket) {
+        socket.emit('game:matched', {
+          gameId,
+          team: player.team,
+          role: player.role,
+        });
+      }
+    });
 
     // Broadcast atualização da fila
     await broadcastQueueUpdate(io);
@@ -154,11 +156,11 @@ const initializeSocketIO = io => {
 
         logger.info(`Usuário ${userId} entrou na fila via socket ${socket.id}`);
 
-        // Tentar encontrar match após adicionar à fila
+        // Tentar encontrar match após adicionar à fila (requer 4 jogadores para jogo 2x2)
         const match = await QueueService.findMatch();
-        if (match && match.length === 2) {
-          // Criar match automaticamente
-          await createMatch(io, match[0], match[1]);
+        if (match && match.length === 4) {
+          // Criar match automaticamente com 4 jogadores
+          await createMatch(io, match);
         }
       } catch (error) {
         logger.error(`Erro no evento queue:join: ${error.message}`);
@@ -215,6 +217,374 @@ const initializeSocketIO = io => {
         logger.debug(`Ping recebido do usuário ${userId}`);
       } catch (error) {
         logger.error(`Erro no evento queue:ping: ${error.message}`);
+      }
+    });
+
+    // ========== GAME EVENTS ==========
+
+    // Event: game:join
+    socket.on('game:join', async data => {
+      try {
+        const { gameId, userId } = data;
+
+        if (!gameId || !userId) {
+          socket.emit('game:error', { message: 'gameId e userId são obrigatórios' });
+          return;
+        }
+
+        logger.info(`Usuário ${userId} tentando entrar no jogo ${gameId}`);
+
+        // Buscar jogo no banco
+        const game = await Game.findById(gameId);
+
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          logger.warn(`Jogo ${gameId} não encontrado`);
+          return;
+        }
+
+        // Verificar se usuário é participante
+        const isParticipant = game.hasPlayer(userId);
+        if (!isParticipant) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          logger.warn(`Usuário ${userId} não é participante do jogo ${gameId}`);
+          return;
+        }
+
+        // Armazenar userId no socket se ainda não estiver
+        if (!socket.userId) {
+          socket.userId = userId;
+          userSockets.set(userId, socket.id);
+        }
+
+        // Obter role do jogador
+        const userRole = game.getPlayerRole(userId);
+
+        // Emitir estado inicial do jogo
+        const gameState = game.toPublicJSON(userId, userRole);
+        socket.emit('game:state', gameState);
+
+        // Adicionar socket à sala do jogo (para broadcast posterior)
+        socket.join(`game:${gameId}`);
+
+        logger.info(`Usuário ${userId} entrou no jogo ${gameId} como ${userRole}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:join: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:clue
+    socket.on('game:clue', async data => {
+      try {
+        const { gameId, word, number } = data;
+
+        if (!gameId || !word || !number) {
+          socket.emit('game:error', { message: 'gameId, word e number são obrigatórios' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é spymaster e turno correto
+        const playerRole = game.getPlayerRole(userId);
+        const playerTeam = game.getPlayerTeam(userId);
+
+        if (playerRole !== 'spymaster') {
+          socket.emit('game:error', { message: 'Apenas spymaster pode dar dicas' });
+          return;
+        }
+
+        if (playerTeam !== game.currentTurn) {
+          socket.emit('game:error', { message: 'Não é o turno da sua equipe' });
+          return;
+        }
+
+        // Atualizar dica no jogo
+        game.currentClue = {
+          word,
+          number,
+          remainingGuesses: number, // Número exato de palpites permitidos
+        };
+
+        await game.save();
+
+        // Broadcast dica para todos no jogo
+        io.to(`game:${gameId}`).emit('game:clue', {
+          clue: game.currentClue,
+        });
+
+        logger.info(`Spymaster ${userId} deu dica "${word}" (${number}) no jogo ${gameId}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:clue: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:guess
+    socket.on('game:guess', async data => {
+      try {
+        const { gameId, cardIndex } = data;
+
+        if (!gameId || cardIndex === undefined) {
+          socket.emit('game:error', { message: 'gameId e cardIndex são obrigatórios' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é operative e turno correto
+        const playerRole = game.getPlayerRole(userId);
+        const playerTeam = game.getPlayerTeam(userId);
+
+        if (playerRole !== 'operative') {
+          socket.emit('game:error', { message: 'Apenas operatives podem fazer palpites' });
+          return;
+        }
+
+        if (playerTeam !== game.currentTurn) {
+          socket.emit('game:error', { message: 'Não é o turno da sua equipe' });
+          return;
+        }
+
+        // Verificar se há dica ativa
+        if (!game.currentClue.word || game.currentClue.remainingGuesses === 0) {
+          socket.emit('game:error', { message: 'Spymaster deve dar uma dica primeiro' });
+          return;
+        }
+
+        // Verificar se carta já foi revelada
+        if (game.board[cardIndex].revealed) {
+          socket.emit('game:error', { message: 'Carta já foi revelada' });
+          return;
+        }
+
+        // Revelar carta
+        game.board[cardIndex].revealed = true;
+        game.currentClue.remainingGuesses -= 1;
+
+        const card = game.board[cardIndex];
+        const isCorrectGuess = card.type === playerTeam;
+
+        // Salvar a revelação da carta antes de verificar o resultado
+        await game.save();
+
+        // Verificar se o jogo terminou (assassino ou vitória)
+        // Passar playerTeam para detectar corretamente qual time revelou o assassino
+        const updatedGame = await checkGameResult(game, playerTeam);
+        const gameEnded = updatedGame.status === 'finished';
+        
+        // Log de depuração
+        if (gameEnded) {
+          logger.info(`[game:guess] Jogo ${gameId} terminou! Vencedor: ${updatedGame.winner}, Status: ${updatedGame.status}`);
+        }
+
+        // Se o jogo terminou por vitória (todas as palavras da equipe foram acertadas),
+        // não mudar turno e não limpar a dica
+        // Se palpite incorreto ou sem palpites restantes, mudar turno (a menos que o jogo tenha terminado)
+        if (!gameEnded && (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0)) {
+          updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
+          updatedGame.currentClue = {
+            word: '',
+            number: 0,
+            remainingGuesses: 0,
+          };
+          updatedGame.turnCount += 1;
+          await updatedGame.save();
+        }
+
+        // Broadcast revelação para todos no jogo
+        io.to(`game:${gameId}`).emit('game:reveal', {
+          cardIndex,
+          cardType: card.type,
+          isCorrect: isCorrectGuess,
+        });
+
+        // Se o jogo terminou, emitir evento de fim de jogo e estado atualizado
+        if (gameEnded) {
+          // Recarregar o jogo do banco para garantir que todas as mudanças foram aplicadas
+          const finalGame = await Game.findById(gameId);
+          
+          // Enviar estado completo do jogo para todos os jogadores
+          const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+          for (const socketInGame of socketsInGame) {
+            if (socketInGame.userId) {
+              const userRole = finalGame.getPlayerRole(socketInGame.userId);
+              socketInGame.emit('game:state', finalGame.toPublicJSON(socketInGame.userId, userRole));
+            }
+          }
+          
+          io.to(`game:${gameId}`).emit('game:end', {
+            winner: finalGame.winner,
+            reason: card.type === 'assassin' ? 'assassin' : 'victory',
+          });
+          logger.info(`Jogo ${gameId} finalizado. Vencedor: ${finalGame.winner}, Razão: ${card.type === 'assassin' ? 'assassin' : 'victory'}`);
+        } else if (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0) {
+          // Se mudou turno, broadcast turno
+          io.to(`game:${gameId}`).emit('game:turn', {
+            currentTurn: updatedGame.currentTurn,
+            turnCount: updatedGame.turnCount,
+            currentClue: updatedGame.currentClue,
+          });
+        }
+
+        logger.info(`Operative ${userId} revelou carta ${cardIndex} (${card.type}) no jogo ${gameId}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:guess: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:forfeit
+    socket.on('game:forfeit', async data => {
+      try {
+        const { gameId } = data;
+
+        if (!gameId) {
+          socket.emit('game:error', { message: 'gameId é obrigatório' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é participante
+        if (!game.hasPlayer(userId)) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          return;
+        }
+
+        // Determinar vencedor (equipe oposta)
+        const playerTeam = game.getPlayerTeam(userId);
+        const winner = playerTeam === 'red' ? 'blue' : 'red';
+
+        // Finalizar jogo
+        game.status = 'finished';
+        game.winner = winner;
+        game.finishedAt = new Date();
+
+        await game.save();
+
+        // Broadcast fim de jogo
+        io.to(`game:${gameId}`).emit('game:end', {
+          winner,
+        });
+
+        logger.info(`Jogo ${gameId} finalizado por desistência. Vencedor: ${winner}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:forfeit: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:timeout
+    socket.on('game:timeout', async data => {
+      try {
+        const { gameId } = data;
+
+        if (!gameId) {
+          socket.emit('game:error', { message: 'gameId é obrigatório' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é participante
+        if (!game.hasPlayer(userId)) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          return;
+        }
+
+        // Verificar se o jogo está ativo
+        if (game.status !== 'active') {
+          socket.emit('game:error', { message: 'Jogo não está ativo' });
+          return;
+        }
+
+        // Verificar se o jogo terminou antes de mudar o turno
+        const updatedGame = await checkGameResult(game);
+        const gameEnded = updatedGame.status === 'finished';
+
+        // Se o jogo não terminou, passar o turno para a equipe adversária
+        if (!gameEnded) {
+          updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
+          updatedGame.currentClue = {
+            word: '',
+            number: 0,
+            remainingGuesses: 0,
+          };
+          updatedGame.turnCount += 1;
+          await updatedGame.save();
+
+          // Broadcast mudança de turno
+          io.to(`game:${gameId}`).emit('game:turn', {
+            currentTurn: updatedGame.currentTurn,
+            turnCount: updatedGame.turnCount,
+            currentClue: updatedGame.currentClue,
+          });
+
+          logger.info(`Timer expirado no jogo ${gameId}. Turno passado para ${updatedGame.currentTurn}`);
+        } else {
+          // Se o jogo terminou, apenas enviar o estado atualizado
+          const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+          for (const socketInGame of socketsInGame) {
+            if (socketInGame.userId) {
+              const userRole = updatedGame.getPlayerRole(socketInGame.userId);
+              socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
+            }
+          }
+
+          io.to(`game:${gameId}`).emit('game:end', {
+            winner: updatedGame.winner,
+            reason: 'timeout',
+          });
+        }
+      } catch (error) {
+        logger.error(`Erro no evento game:timeout: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
       }
     });
 
