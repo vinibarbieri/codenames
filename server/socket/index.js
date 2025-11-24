@@ -130,7 +130,37 @@ const initializeSocketIO = io => {
     });
   });
 
+  // Configurar limpeza automática de usuários inativos a cada 30s
+  setInterval(async () => {
+    try {
+      const removedUserIds = await QueueService.cleanInactiveUsers();
+
+      if (removedUserIds.length > 0) {
+        // Emitir 'queue:removed' para cada usuário removido
+        for (const userId of removedUserIds) {
+          const socketId = userSockets.get(userId);
+          if (socketId) {
+            const userSocket = io.sockets.sockets.get(socketId);
+            if (userSocket) {
+              userSocket.emit('queue:removed', {
+                reason: 'inactivity',
+                message: 'Você foi removido da fila por inatividade',
+              });
+            }
+            userSockets.delete(userId);
+          }
+        }
+
+        // Broadcast atualização da fila
+        await broadcastQueueUpdate(io);
+      }
+    } catch (error) {
+      logger.error(`Erro ao limpar usuários inativos: ${error.message}`);
+    }
+  }, 30000); // 30 segundos
+
   logger.info('Socket.io inicializado com sucesso');
+  logger.info('Sistema de limpeza de inatividade iniciado (intervalo: 30s)');
 };
 
 export default initializeSocketIO;

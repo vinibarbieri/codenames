@@ -151,6 +151,43 @@ class QueueService {
   }
 
   /**
+   * Remove usuários inativos da fila (sem ping por mais de 60s)
+   * @returns {Promise<Array>} Lista de userIds removidos
+   */
+  async cleanInactiveUsers() {
+    try {
+      const inactivityTimeout = 60000; // 60 segundos
+      const cutoffTime = Date.now() - inactivityTimeout;
+
+      // Buscar usuários inativos
+      const inactiveUsers = await Queue.find({
+        lastPing: { $lt: new Date(cutoffTime) },
+      });
+
+      if (inactiveUsers.length === 0) {
+        return [];
+      }
+
+      // Remover usuários inativos
+      const removedUserIds = [];
+      for (const user of inactiveUsers) {
+        const inactiveTime = Date.now() - new Date(user.lastPing).getTime();
+        await Queue.deleteOne({ _id: user._id });
+        removedUserIds.push(user.userId.toString());
+
+        logger.info(
+          `Usuário ${user.userId} removido por inatividade. Tempo sem ping: ${Math.floor(inactiveTime / 1000)}s`
+        );
+      }
+
+      return removedUserIds;
+    } catch (error) {
+      logger.error(`Erro ao limpar usuários inativos: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Obtém a posição de um usuário na fila
    * @param {string} userId - ID do usuário
    * @returns {Promise<number>}
