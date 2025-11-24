@@ -33,56 +33,63 @@ const broadcastQueueUpdate = async io => {
 };
 
 /**
- * Cria um match entre dois jogadores
+ * Cria um match entre 4 jogadores (2x2: 2 jogadores por equipe)
  * @param {Object} io - Instância do Socket.io
- * @param {Object} player1 - Primeiro jogador {userId}
- * @param {Object} player2 - Segundo jogador {userId}
+ * @param {Array} playersArray - Array de 4 jogadores [{userId}, {userId}, {userId}, {userId}]
  */
-const createMatch = async (io, player1, player2) => {
+const createMatch = async (io, playersArray) => {
   try {
-    const userId1 = player1.userId.toString();
-    const userId2 = player2.userId.toString();
+    if (playersArray.length !== 4) {
+      throw new Error('createMatch requer exatamente 4 jogadores');
+    }
+
+    const userIds = playersArray.map(p => p.userId.toString());
 
     // Buscar sockets antes de remover da fila
-    let socket1 = null;
-    let socket2 = null;
+    const sockets = new Map();
 
     // Buscar sockets por userId nos sockets conectados
     io.sockets.sockets.forEach(socket => {
-      if (socket.userId === userId1) {
-        socket1 = socket;
-      }
-      if (socket.userId === userId2) {
-        socket2 = socket;
+      const userId = socket.userId?.toString();
+      if (userIds.includes(userId)) {
+        sockets.set(userId, socket);
       }
     });
 
-    // Remover ambos da fila
-    await QueueService.removeFromQueue(userId1);
-    await QueueService.removeFromQueue(userId2);
-
-    // Remover mapeamentos de sockets
-    userSockets.delete(userId1);
-    userSockets.delete(userId2);
+    // Remover todos da fila
+    for (const userId of userIds) {
+      await QueueService.removeFromQueue(userId);
+      userSockets.delete(userId);
+    }
 
     // Sortear equipes aleatoriamente
-    // Garantir que cada equipe tenha um spymaster
-    const teams = ['red', 'blue'];
-    const shuffledTeams = teams.sort(() => Math.random() - 0.5);
-
+    // Dividir 4 jogadores em 2 equipes (2 por equipe)
+    // Cada equipe terá 1 spymaster e 1 operative
+    const shuffledUserIds = [...userIds].sort(() => Math.random() - 0.5);
+    
     // Atribuir equipes e roles
-    // Para 2 jogadores: cada um será spymaster de sua equipe
-    // Operatives podem ser adicionados depois ou jogados como bots
+    // Red team: primeiro e segundo jogador (1 spymaster + 1 operative)
+    // Blue team: terceiro e quarto jogador (1 spymaster + 1 operative)
     const players = [
       {
-        userId: userId1,
-        team: shuffledTeams[0],
+        userId: shuffledUserIds[0],
+        team: 'red',
         role: 'spymaster',
       },
       {
-        userId: userId2,
-        team: shuffledTeams[1],
+        userId: shuffledUserIds[1],
+        team: 'red',
+        role: 'operative',
+      },
+      {
+        userId: shuffledUserIds[2],
+        team: 'blue',
         role: 'spymaster',
+      },
+      {
+        userId: shuffledUserIds[3],
+        team: 'blue',
+        role: 'operative',
       },
     ];
 
@@ -90,26 +97,20 @@ const createMatch = async (io, player1, player2) => {
     const game = await initializeGame(players, 'classic');
     const gameId = game._id.toString();
 
-    logger.info(
-      `Match criado: gameId=${gameId}, players=[${userId1}(${players[0].team}/${players[0].role}), ${userId2}(${players[1].team}/${players[1].role})]`
-    );
+    const playersInfo = players.map(p => `${p.userId}(${p.team}/${p.role})`).join(', ');
+    logger.info(`Match criado: gameId=${gameId}, players=[${playersInfo}]`);
 
-    // Emitir 'game:matched' para ambos jogadores
-    if (socket1) {
-      socket1.emit('game:matched', {
-        gameId,
-        team: players[0].team,
-        role: players[0].role,
-      });
-    }
-
-    if (socket2) {
-      socket2.emit('game:matched', {
-        gameId,
-        team: players[1].team,
-        role: players[1].role,
-      });
-    }
+    // Emitir 'game:matched' para todos os jogadores
+    players.forEach(player => {
+      const socket = sockets.get(player.userId);
+      if (socket) {
+        socket.emit('game:matched', {
+          gameId,
+          team: player.team,
+          role: player.role,
+        });
+      }
+    });
 
     // Broadcast atualização da fila
     await broadcastQueueUpdate(io);
@@ -155,11 +156,11 @@ const initializeSocketIO = io => {
 
         logger.info(`Usuário ${userId} entrou na fila via socket ${socket.id}`);
 
-        // Tentar encontrar match após adicionar à fila
+        // Tentar encontrar match após adicionar à fila (requer 4 jogadores para jogo 2x2)
         const match = await QueueService.findMatch();
-        if (match && match.length === 2) {
-          // Criar match automaticamente
-          await createMatch(io, match[0], match[1]);
+        if (match && match.length === 4) {
+          // Criar match automaticamente com 4 jogadores
+          await createMatch(io, match);
         }
       } catch (error) {
         logger.error(`Erro no evento queue:join: ${error.message}`);
