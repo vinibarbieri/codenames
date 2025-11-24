@@ -1,10 +1,6 @@
 import Joi from 'joi';
 import Game from '../models/Game.js';
-import {
-  initializeGame,
-  checkGameResult,
-  updatePlayerScores,
-} from '../services/gameService.js';
+import { initializeGame, checkGameResult, updatePlayerScores } from '../services/gameService.js';
 
 // Validation schemas
 const createGameSchema = Joi.object({
@@ -163,7 +159,7 @@ export const giveClue = async (req, res) => {
     if (playerTeam !== game.currentTurn) {
       return res.status(403).json({
         success: false,
-        message: 'It is not your team\'s turn',
+        message: "It is not your team's turn",
       });
     }
 
@@ -241,7 +237,7 @@ export const makeGuess = async (req, res) => {
     if (playerTeam !== game.currentTurn) {
       return res.status(403).json({
         success: false,
-        message: 'It is not your team\'s turn',
+        message: "It is not your team's turn",
       });
     }
 

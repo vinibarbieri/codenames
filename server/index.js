@@ -1,4 +1,6 @@
 import express from 'express';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -7,11 +9,22 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import gameRoutes from './routes/game.js';
+import initializeSocketIO from './socket/index.js';
 
 dotenv.config({ path: '../.env' });
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
+
+// Configurar Socket.io com CORS
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
 
 // Middleware
 app.use(helmet());
@@ -22,7 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
@@ -46,7 +59,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     message: 'Codenames API is running',
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
   });
 });
 
@@ -58,11 +71,17 @@ app.use('/api/games', gameRoutes);
 // Start server
 const startServer = async () => {
   await connectDB();
-  app.listen(PORT, () => {
+
+  // Inicializar Socket.io
+  initializeSocketIO(io);
+
+  httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🔌 Socket.io ready for connections`);
   });
 };
 
 startServer();
 
 export default app;
+export { io };
