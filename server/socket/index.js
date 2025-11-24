@@ -388,13 +388,23 @@ const initializeSocketIO = io => {
         const card = game.board[cardIndex];
         const isCorrectGuess = card.type === playerTeam;
 
+        // Salvar a revelação da carta antes de verificar o resultado
+        await game.save();
+
         // Verificar se o jogo terminou (assassino ou vitória)
         // Passar playerTeam para detectar corretamente qual time revelou o assassino
         const updatedGame = await checkGameResult(game, playerTeam);
         const gameEnded = updatedGame.status === 'finished';
+        
+        // Log de depuração
+        if (gameEnded) {
+          logger.info(`[game:guess] Jogo ${gameId} terminou! Vencedor: ${updatedGame.winner}, Status: ${updatedGame.status}`);
+        }
 
+        // Se o jogo terminou por vitória (todas as palavras da equipe foram acertadas),
+        // não mudar turno e não limpar a dica
         // Se palpite incorreto ou sem palpites restantes, mudar turno (a menos que o jogo tenha terminado)
-        if (!gameEnded && (!isCorrectGuess || game.currentClue.remainingGuesses === 0)) {
+        if (!gameEnded && (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0)) {
           updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
           updatedGame.currentClue = {
             word: '',
@@ -414,20 +424,23 @@ const initializeSocketIO = io => {
 
         // Se o jogo terminou, emitir evento de fim de jogo e estado atualizado
         if (gameEnded) {
+          // Recarregar o jogo do banco para garantir que todas as mudanças foram aplicadas
+          const finalGame = await Game.findById(gameId);
+          
           // Enviar estado completo do jogo para todos os jogadores
           const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
           for (const socketInGame of socketsInGame) {
             if (socketInGame.userId) {
-              const userRole = updatedGame.getPlayerRole(socketInGame.userId);
-              socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
+              const userRole = finalGame.getPlayerRole(socketInGame.userId);
+              socketInGame.emit('game:state', finalGame.toPublicJSON(socketInGame.userId, userRole));
             }
           }
           
           io.to(`game:${gameId}`).emit('game:end', {
-            winner: updatedGame.winner,
+            winner: finalGame.winner,
             reason: card.type === 'assassin' ? 'assassin' : 'victory',
           });
-          logger.info(`Jogo ${gameId} finalizado. Vencedor: ${updatedGame.winner}`);
+          logger.info(`Jogo ${gameId} finalizado. Vencedor: ${finalGame.winner}, Razão: ${card.type === 'assassin' ? 'assassin' : 'victory'}`);
         } else if (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0) {
           // Se mudou turno, broadcast turno
           io.to(`game:${gameId}`).emit('game:turn', {

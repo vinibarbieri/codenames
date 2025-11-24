@@ -270,6 +270,8 @@ export const makeGuess = async (req, res) => {
     const updatedGame = await checkGameResult(game, playerTeam);
     const gameEnded = updatedGame.status === 'finished';
 
+    // Se o jogo terminou por vitória (todas as palavras da equipe foram acertadas),
+    // não mudar turno e não limpar a dica
     // If incorrect guess or no guesses remaining, switch turn (unless game ended)
     if (!gameEnded && (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0)) {
       updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
@@ -279,6 +281,9 @@ export const makeGuess = async (req, res) => {
         remainingGuesses: 0,
       };
       updatedGame.turnCount += 1;
+      await updatedGame.save();
+    } else if (gameEnded) {
+      // Se o jogo terminou, garantir que o estado seja salvo
       await updatedGame.save();
     }
 

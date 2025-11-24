@@ -149,12 +149,16 @@ export const checkGameResult = async (game, guessingTeam = null) => {
   const revealedRed = game.board.filter(card => card.type === 'red' && card.revealed).length;
   const revealedBlue = game.board.filter(card => card.type === 'blue' && card.revealed).length;
 
-  // Check for victory
+  // Log de depuração
+  console.log(`[checkGameResult] Cartas reveladas - Vermelho: ${revealedRed}/9, Azul: ${revealedBlue}/8`);
+
+  // Check for victory - quando uma equipe acerta todas as suas palavras (0 restantes), o jogo termina
   if (revealedRed === 9) {
     game.winner = 'red';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
+    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Vermelha venceu (9/9 cartas reveladas)`);
     return game;
   }
 
@@ -163,8 +167,11 @@ export const checkGameResult = async (game, guessingTeam = null) => {
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
+    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Azul venceu (8/8 cartas reveladas)`);
     return game;
   }
+
+  console.log(`[checkGameResult] Jogo continua - Nenhuma equipe completou todas as palavras`);
 
   return game;
 };
