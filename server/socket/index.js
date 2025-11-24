@@ -509,6 +509,85 @@ const initializeSocketIO = io => {
       }
     });
 
+    // Event: game:timeout
+    socket.on('game:timeout', async data => {
+      try {
+        const { gameId } = data;
+
+        if (!gameId) {
+          socket.emit('game:error', { message: 'gameId é obrigatório' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é participante
+        if (!game.hasPlayer(userId)) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          return;
+        }
+
+        // Verificar se o jogo está ativo
+        if (game.status !== 'active') {
+          socket.emit('game:error', { message: 'Jogo não está ativo' });
+          return;
+        }
+
+        // Verificar se o jogo terminou antes de mudar o turno
+        const updatedGame = await checkGameResult(game);
+        const gameEnded = updatedGame.status === 'finished';
+
+        // Se o jogo não terminou, passar o turno para a equipe adversária
+        if (!gameEnded) {
+          updatedGame.currentTurn = updatedGame.currentTurn === 'red' ? 'blue' : 'red';
+          updatedGame.currentClue = {
+            word: '',
+            number: 0,
+            remainingGuesses: 0,
+          };
+          updatedGame.turnCount += 1;
+          await updatedGame.save();
+
+          // Broadcast mudança de turno
+          io.to(`game:${gameId}`).emit('game:turn', {
+            currentTurn: updatedGame.currentTurn,
+            turnCount: updatedGame.turnCount,
+            currentClue: updatedGame.currentClue,
+          });
+
+          logger.info(`Timer expirado no jogo ${gameId}. Turno passado para ${updatedGame.currentTurn}`);
+        } else {
+          // Se o jogo terminou, apenas enviar o estado atualizado
+          const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+          for (const socketInGame of socketsInGame) {
+            if (socketInGame.userId) {
+              const userRole = updatedGame.getPlayerRole(socketInGame.userId);
+              socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
+            }
+          }
+
+          io.to(`game:${gameId}`).emit('game:end', {
+            winner: updatedGame.winner,
+            reason: 'timeout',
+          });
+        }
+      } catch (error) {
+        logger.error(`Erro no evento game:timeout: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
     // Event: disconnect
     socket.on('disconnect', async () => {
       logger.info(`Cliente desconectado: ${socket.id}`);

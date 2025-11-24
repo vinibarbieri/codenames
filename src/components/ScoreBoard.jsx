@@ -29,11 +29,13 @@ const ScoreBoard = ({
 }) => {
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const prevTurnCountRef = useRef(turnCount);
+  const hasExpiredRef = useRef(false);
 
   // Resetar timer quando turnCount muda
   useEffect(() => {
     if (prevTurnCountRef.current !== turnCount && turnCount !== undefined) {
       prevTurnCountRef.current = turnCount;
+      hasExpiredRef.current = false;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTimeLeft(timerSeconds);
     }
@@ -41,8 +43,13 @@ const ScoreBoard = ({
 
   // Countdown do timer
   useEffect(() => {
-    if (timeLeft <= 0) {
+    if (timeLeft <= 0 && !hasExpiredRef.current) {
+      hasExpiredRef.current = true;
       onTimerExpire?.();
+      return;
+    }
+
+    if (timeLeft <= 0) {
       return;
     }
 

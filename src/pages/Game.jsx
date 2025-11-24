@@ -23,6 +23,7 @@ const GamePageContent = () => {
     sendClue,
     sendGuess,
     forfeitGame,
+    sendTimeout,
     getRemainingCards,
     getMyTeam,
     getMyRole,
@@ -68,8 +69,9 @@ const GamePageContent = () => {
   };
 
   const handleTimerExpire = () => {
-    // Timer expirado - o backend deve lidar com isso
-    console.log('Timer de inatividade expirado');
+    // Timer expirado - passar o turno para a equipe adversária
+    console.log('Timer de inatividade expirado - passando turno');
+    sendTimeout();
   };
 
   // Loading state

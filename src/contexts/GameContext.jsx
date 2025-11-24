@@ -159,6 +159,11 @@ export const GameProvider = ({ children, gameId }) => {
     socket.emit('game:forfeit', { gameId });
   };
 
+  const sendTimeout = () => {
+    if (!gameId) return;
+    socket.emit('game:timeout', { gameId });
+  };
+
   // Calcular cartas restantes
   const getRemainingCards = (team) => {
     if (!gameState?.board) return 0;
@@ -192,6 +197,7 @@ export const GameProvider = ({ children, gameId }) => {
     sendClue,
     sendGuess,
     forfeitGame,
+    sendTimeout,
     getRemainingCards,
     getMyTeam,
     getMyRole,
