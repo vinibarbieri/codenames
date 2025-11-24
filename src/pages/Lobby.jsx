@@ -7,12 +7,11 @@ import Button from '../components/Button';
 import Avatar from '../components/Avatar';
 import Loader from '../components/Loader';
 import Input from '../components/Input';
+import QueueStatus from '../components/QueueStatus';
 
 const Lobby = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [inQueue, setInQueue] = useState(false);
-  const [queuePosition, setQueuePosition] = useState(0);
   const [recentMatches, setRecentMatches] = useState([]);
   const [topPlayers, setTopPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,17 +57,6 @@ const Lobby = () => {
     }
   };
 
-  const handleJoinQueue = () => {
-    // TODO: Implement Socket.io queue join
-    setInQueue(true);
-    setQueuePosition(3);
-  };
-
-  const handleLeaveQueue = () => {
-    // TODO: Implement Socket.io queue leave
-    setInQueue(false);
-    setQueuePosition(0);
-  };
 
   const handlePlayVsBot = () => {
     // TODO: Implement bot game creation
@@ -139,36 +127,7 @@ const Lobby = () => {
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                   Fila de Partidas
                 </h3>
-                {!inQueue ? (
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    onClick={handleJoinQueue}
-                  >
-                    Entrar na Fila
-                  </Button>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg text-center">
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        Posição na fila
-                      </p>
-                      <p className="text-3xl font-bold text-primary-600 dark:text-primary-400">
-                        #{queuePosition}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-                        Tempo estimado: ~{queuePosition * 2} min
-                      </p>
-                    </div>
-                    <Button
-                      variant="danger"
-                      className="w-full"
-                      onClick={handleLeaveQueue}
-                    >
-                      Sair da Fila
-                    </Button>
-                  </div>
-                )}
+                <QueueStatus />
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <Button
                     variant="secondary"

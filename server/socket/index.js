@@ -1,5 +1,6 @@
 import winston from 'winston';
 import QueueService from '../services/QueueService.js';
+import { initializeGame } from '../services/gameService.js';
 
 // Configurar logger Winston
 const logger = winston.createLogger({
@@ -27,6 +28,95 @@ const broadcastQueueUpdate = async io => {
     logger.debug(`Broadcast queue:update enviado. Total: ${queueStatus.totalInQueue}`);
   } catch (error) {
     logger.error(`Erro ao fazer broadcast da fila: ${error.message}`);
+  }
+};
+
+/**
+ * Cria um match entre dois jogadores
+ * @param {Object} io - Instância do Socket.io
+ * @param {Object} player1 - Primeiro jogador {userId}
+ * @param {Object} player2 - Segundo jogador {userId}
+ */
+const createMatch = async (io, player1, player2) => {
+  try {
+    const userId1 = player1.userId.toString();
+    const userId2 = player2.userId.toString();
+
+    // Buscar sockets antes de remover da fila
+    let socket1 = null;
+    let socket2 = null;
+
+    // Buscar sockets por userId nos sockets conectados
+    io.sockets.sockets.forEach(socket => {
+      if (socket.userId === userId1) {
+        socket1 = socket;
+      }
+      if (socket.userId === userId2) {
+        socket2 = socket;
+      }
+    });
+
+    // Remover ambos da fila
+    await QueueService.removeFromQueue(userId1);
+    await QueueService.removeFromQueue(userId2);
+
+    // Remover mapeamentos de sockets
+    userSockets.delete(userId1);
+    userSockets.delete(userId2);
+
+    // Sortear equipes aleatoriamente
+    // Garantir que cada equipe tenha um spymaster
+    const teams = ['red', 'blue'];
+    const shuffledTeams = teams.sort(() => Math.random() - 0.5);
+
+    // Atribuir equipes e roles
+    // Para 2 jogadores: cada um será spymaster de sua equipe
+    // Operatives podem ser adicionados depois ou jogados como bots
+    const players = [
+      {
+        userId: userId1,
+        team: shuffledTeams[0],
+        role: 'spymaster',
+      },
+      {
+        userId: userId2,
+        team: shuffledTeams[1],
+        role: 'spymaster',
+      },
+    ];
+
+    // Criar partida
+    const game = await initializeGame(players, 'classic');
+    const gameId = game._id.toString();
+
+    logger.info(
+      `Match criado: gameId=${gameId}, players=[${userId1}(${players[0].team}/${players[0].role}), ${userId2}(${players[1].team}/${players[1].role})]`
+    );
+
+    // Emitir 'game:matched' para ambos jogadores
+    if (socket1) {
+      socket1.emit('game:matched', {
+        gameId,
+        team: players[0].team,
+        role: players[0].role,
+      });
+    }
+
+    if (socket2) {
+      socket2.emit('game:matched', {
+        gameId,
+        team: players[1].team,
+        role: players[1].role,
+      });
+    }
+
+    // Broadcast atualização da fila
+    await broadcastQueueUpdate(io);
+
+    return game;
+  } catch (error) {
+    logger.error(`Erro ao criar match: ${error.message}`);
+    throw error;
   }
 };
 
@@ -63,6 +153,13 @@ const initializeSocketIO = io => {
         await broadcastQueueUpdate(io);
 
         logger.info(`Usuário ${userId} entrou na fila via socket ${socket.id}`);
+
+        // Tentar encontrar match após adicionar à fila
+        const match = await QueueService.findMatch();
+        if (match && match.length === 2) {
+          // Criar match automaticamente
+          await createMatch(io, match[0], match[1]);
+        }
       } catch (error) {
         logger.error(`Erro no evento queue:join: ${error.message}`);
         socket.emit('queue:error', { message: error.message });
@@ -122,11 +219,21 @@ const initializeSocketIO = io => {
     });
 
     // Event: disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       logger.info(`Cliente desconectado: ${socket.id}`);
 
-      // Nota: A remoção automática da fila em caso de desconexão
-      // será implementada na subtask 6.4 junto com a lógica de matchmaking
+      // Remover usuário da fila se estiver conectado
+      if (socket.userId) {
+        try {
+          await QueueService.removeFromQueue(socket.userId);
+          userSockets.delete(socket.userId);
+          logger.info(`Usuário ${socket.userId} removido da fila devido à desconexão`);
+          // Broadcast atualização da fila
+          await broadcastQueueUpdate(io);
+        } catch (error) {
+          logger.error(`Erro ao remover usuário ${socket.userId} da fila após desconexão: ${error.message}`);
+        }
+      }
     });
   });
 
