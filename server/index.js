@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import gameRoutes from './routes/game.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -52,6 +53,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/games', gameRoutes);
 
 // Start server
 const startServer = async () => {
