@@ -1,6 +1,7 @@
 import winston from 'winston';
 import QueueService from '../services/QueueService.js';
 import { initializeGame } from '../services/gameService.js';
+import Game from '../models/Game.js';
 
 // Configurar logger Winston
 const logger = winston.createLogger({
@@ -215,6 +216,262 @@ const initializeSocketIO = io => {
         logger.debug(`Ping recebido do usuário ${userId}`);
       } catch (error) {
         logger.error(`Erro no evento queue:ping: ${error.message}`);
+      }
+    });
+
+    // ========== GAME EVENTS ==========
+
+    // Event: game:join
+    socket.on('game:join', async data => {
+      try {
+        const { gameId, userId } = data;
+
+        if (!gameId || !userId) {
+          socket.emit('game:error', { message: 'gameId e userId são obrigatórios' });
+          return;
+        }
+
+        logger.info(`Usuário ${userId} tentando entrar no jogo ${gameId}`);
+
+        // Buscar jogo no banco
+        const game = await Game.findById(gameId);
+
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          logger.warn(`Jogo ${gameId} não encontrado`);
+          return;
+        }
+
+        // Verificar se usuário é participante
+        const isParticipant = game.hasPlayer(userId);
+        if (!isParticipant) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          logger.warn(`Usuário ${userId} não é participante do jogo ${gameId}`);
+          return;
+        }
+
+        // Armazenar userId no socket se ainda não estiver
+        if (!socket.userId) {
+          socket.userId = userId;
+          userSockets.set(userId, socket.id);
+        }
+
+        // Obter role do jogador
+        const userRole = game.getPlayerRole(userId);
+
+        // Emitir estado inicial do jogo
+        const gameState = game.toPublicJSON(userId, userRole);
+        socket.emit('game:state', gameState);
+
+        // Adicionar socket à sala do jogo (para broadcast posterior)
+        socket.join(`game:${gameId}`);
+
+        logger.info(`Usuário ${userId} entrou no jogo ${gameId} como ${userRole}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:join: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:clue
+    socket.on('game:clue', async data => {
+      try {
+        const { gameId, word, number } = data;
+
+        if (!gameId || !word || !number) {
+          socket.emit('game:error', { message: 'gameId, word e number são obrigatórios' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é spymaster e turno correto
+        const playerRole = game.getPlayerRole(userId);
+        const playerTeam = game.getPlayerTeam(userId);
+
+        if (playerRole !== 'spymaster') {
+          socket.emit('game:error', { message: 'Apenas spymaster pode dar dicas' });
+          return;
+        }
+
+        if (playerTeam !== game.currentTurn) {
+          socket.emit('game:error', { message: 'Não é o turno da sua equipe' });
+          return;
+        }
+
+        // Atualizar dica no jogo
+        game.currentClue = {
+          word,
+          number,
+          remainingGuesses: number + 1, // +1 porque pode errar uma vez
+        };
+
+        await game.save();
+
+        // Broadcast dica para todos no jogo
+        io.to(`game:${gameId}`).emit('game:clue', {
+          clue: game.currentClue,
+        });
+
+        logger.info(`Spymaster ${userId} deu dica "${word}" (${number}) no jogo ${gameId}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:clue: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:guess
+    socket.on('game:guess', async data => {
+      try {
+        const { gameId, cardIndex } = data;
+
+        if (!gameId || cardIndex === undefined) {
+          socket.emit('game:error', { message: 'gameId e cardIndex são obrigatórios' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é operative e turno correto
+        const playerRole = game.getPlayerRole(userId);
+        const playerTeam = game.getPlayerTeam(userId);
+
+        if (playerRole !== 'operative') {
+          socket.emit('game:error', { message: 'Apenas operatives podem fazer palpites' });
+          return;
+        }
+
+        if (playerTeam !== game.currentTurn) {
+          socket.emit('game:error', { message: 'Não é o turno da sua equipe' });
+          return;
+        }
+
+        // Verificar se há dica ativa
+        if (!game.currentClue.word || game.currentClue.remainingGuesses === 0) {
+          socket.emit('game:error', { message: 'Spymaster deve dar uma dica primeiro' });
+          return;
+        }
+
+        // Verificar se carta já foi revelada
+        if (game.board[cardIndex].revealed) {
+          socket.emit('game:error', { message: 'Carta já foi revelada' });
+          return;
+        }
+
+        // Revelar carta
+        game.board[cardIndex].revealed = true;
+        game.currentClue.remainingGuesses -= 1;
+
+        const card = game.board[cardIndex];
+        const isCorrectGuess = card.type === playerTeam;
+
+        // Se palpite incorreto ou sem palpites restantes, mudar turno
+        if (!isCorrectGuess || game.currentClue.remainingGuesses === 0) {
+          game.currentTurn = game.currentTurn === 'red' ? 'blue' : 'red';
+          game.currentClue = {
+            word: '',
+            number: 0,
+            remainingGuesses: 0,
+          };
+          game.turnCount += 1;
+        }
+
+        await game.save();
+
+        // Broadcast revelação para todos no jogo
+        io.to(`game:${gameId}`).emit('game:reveal', {
+          cardIndex,
+          cardType: card.type,
+          isCorrect: isCorrectGuess,
+        });
+
+        // Se mudou turno, broadcast turno
+        if (!isCorrectGuess || game.currentClue.remainingGuesses === 0) {
+          io.to(`game:${gameId}`).emit('game:turn', {
+            currentTurn: game.currentTurn,
+            turnCount: game.turnCount,
+            currentClue: game.currentClue,
+          });
+        }
+
+        logger.info(`Operative ${userId} revelou carta ${cardIndex} (${card.type}) no jogo ${gameId}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:guess: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // Event: game:forfeit
+    socket.on('game:forfeit', async data => {
+      try {
+        const { gameId } = data;
+
+        if (!gameId) {
+          socket.emit('game:error', { message: 'gameId é obrigatório' });
+          return;
+        }
+
+        const userId = socket.userId;
+        if (!userId) {
+          socket.emit('game:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        // Buscar jogo
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('game:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Verificar se é participante
+        if (!game.hasPlayer(userId)) {
+          socket.emit('game:error', { message: 'Você não é participante deste jogo' });
+          return;
+        }
+
+        // Determinar vencedor (equipe oposta)
+        const playerTeam = game.getPlayerTeam(userId);
+        const winner = playerTeam === 'red' ? 'blue' : 'red';
+
+        // Finalizar jogo
+        game.status = 'finished';
+        game.winner = winner;
+        game.finishedAt = new Date();
+
+        await game.save();
+
+        // Broadcast fim de jogo
+        io.to(`game:${gameId}`).emit('game:end', {
+          winner,
+        });
+
+        logger.info(`Jogo ${gameId} finalizado por desistência. Vencedor: ${winner}`);
+      } catch (error) {
+        logger.error(`Erro no evento game:forfeit: ${error.message}`);
+        socket.emit('game:error', { message: error.message });
       }
     });
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import socket from '../services/socket';
 
@@ -19,10 +19,20 @@ export const GameProvider = ({ children, gameId }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
   const [shakingCardIndex, setShakingCardIndex] = useState(null);
+  const hasJoinedRef = useRef(false);
 
   // Conectar ao jogo quando gameId e user estiverem disponíveis
   useEffect(() => {
     if (!gameId || !user) return;
+
+    // Resetar flag quando gameId mudar
+    hasJoinedRef.current = false;
+
+    // Verificar se já está conectado (caso venha da fila)
+    if (socket.connected) {
+      setIsConnected(true);
+      console.log('Socket já conectado ao jogo');
+    }
 
     const handleConnect = () => {
       setIsConnected(true);
@@ -104,17 +114,24 @@ export const GameProvider = ({ children, gameId }) => {
     socket.on('game:end', handleGameEnd);
     socket.on('game:error', handleGameError);
 
-    // Emitir evento de join
-    if (socket.connected) {
-      socket.emit('game:join', { gameId, userId: user.id || user._id });
-    } else {
-      socket.once('connect', () => {
+    // Emitir evento de join (apenas uma vez por gameId)
+    const joinGame = () => {
+      if (!hasJoinedRef.current) {
+        hasJoinedRef.current = true;
         socket.emit('game:join', { gameId, userId: user.id || user._id });
-      });
+        console.log('Emitindo game:join para', gameId);
+      }
+    };
+
+    if (socket.connected) {
+      joinGame();
+    } else {
+      socket.once('connect', joinGame);
     }
 
     // Cleanup
     return () => {
+      hasJoinedRef.current = false;
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('game:state', handleGameState);
