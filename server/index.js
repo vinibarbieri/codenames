@@ -13,6 +13,7 @@ import chatRoutes from './routes/chatRoutes.js';
 import initializeSocketIO from './socket/index.js';
 import { startCleanupCronjob } from './services/chatCleanupService.js';
 import { authenticateSocket } from './middleware/socketAuth.js';
+import { initGridFS } from './utils/gridfs.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -81,6 +82,10 @@ const connectDB = async () => {
     }
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ MongoDB connected successfully');
+    
+    // Inicializar GridFS para armazenamento de vídeos
+    initGridFS('recordings');
+    console.log('✅ GridFS initialized for recordings');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     process.exit(1);
