@@ -30,12 +30,27 @@ const Lobby = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch recent matches (mock data for now)
-      setRecentMatches([
-        { id: 1, opponent: 'Player2', result: 'Vitória', score: 150, date: '2025-11-23' },
-        { id: 2, opponent: 'Player3', result: 'Derrota', score: 80, date: '2025-11-22' },
-        { id: 3, opponent: 'Player4', result: 'Vitória', score: 120, date: '2025-11-21' },
-      ]);
+      // Fetch recent matches from API
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const matchesResponse = await fetch(
+            `${import.meta.env.VITE_API_URL}/users/me/matches/recent`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (matchesResponse.ok) {
+            const matchesResult = await matchesResponse.json();
+            setRecentMatches(matchesResult.data || []);
+          }
+        } catch (error) {
+          console.warn('Erro ao buscar partidas recentes:', error);
+          setRecentMatches([]);
+        }
+      }
 
       // Fetch top 10 ranking
       const response = await fetch(`${import.meta.env.VITE_API_URL}/users/ranking?limit=10`);
@@ -43,7 +58,7 @@ const Lobby = () => {
         const data = await response.json();
         setTopPlayers(data.data || []);
       } else {
-        // Mock data
+        // Mock data fallback
         setTopPlayers([
           { id: 1, nickname: 'Player1', score: 1500, avatar: '' },
           { id: 2, nickname: 'Player2', score: 1450, avatar: '' },
@@ -199,7 +214,7 @@ const Lobby = () => {
                             {match.result}
                           </div>
                           <div className="text-sm text-gray-600 dark:text-gray-400">
-                            +{match.score} pts
+                            {match.score} pts
                           </div>
                         </div>
                       </div>
