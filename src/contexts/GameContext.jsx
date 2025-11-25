@@ -28,12 +28,6 @@ export const GameProvider = ({ children, gameId }) => {
     // Resetar flag quando gameId mudar
     hasJoinedRef.current = false;
 
-    // Verificar se já está conectado (caso venha da fila)
-    if (socket.connected) {
-      setIsConnected(true);
-      console.log('Socket já conectado ao jogo');
-    }
-
     const handleConnect = () => {
       setIsConnected(true);
       console.log('Socket conectado ao jogo');
@@ -103,6 +97,11 @@ export const GameProvider = ({ children, gameId }) => {
       console.error('Erro no jogo:', data);
       setError(data.message || 'Erro desconhecido');
     };
+
+    // Verificar se já está conectado (caso venha da fila)
+    if (socket.connected) {
+      handleConnect();
+    }
 
     // Configurar listeners
     socket.on('connect', handleConnect);
