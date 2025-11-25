@@ -83,7 +83,7 @@ export const useRecording = (gameId, isGameActive = false) => {
             },
           });
           audioStreamRef.current = audioStream;
-        } catch (audioError) {
+        } catch {
           console.warn('Microphone access denied, recording without audio');
         }
 
@@ -208,7 +208,7 @@ export const useRecording = (gameId, isGameActive = false) => {
       cleanupStreams();
       throw err;
     }
-  }, [isRecording, cleanupStreams]);
+  }, [isRecording, cleanupStreams, uploadRecording]);
 
   /**
    * Upload recorded video to backend

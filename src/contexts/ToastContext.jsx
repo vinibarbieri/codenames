@@ -101,6 +101,7 @@ const ToastContainer = ({ toasts, removeToast }) => {
  * Hook to access toast context
  * @returns {Object} Toast context value
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {

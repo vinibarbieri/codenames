@@ -7,7 +7,6 @@ import { promisify } from 'util';
 import Recording from '../models/Recording.js';
 import Game from '../models/Game.js';
 import {
-  getGridFSBucket,
   uploadToGridFS,
   deleteFromGridFS,
 } from '../config/gridfs.js';
@@ -32,7 +31,7 @@ if (!fs.existsSync(TEMP_DIR)) {
  */
 export const checkFFMPEGInstalled = () => {
   return new Promise(resolve => {
-    ffmpeg.getAvailableFormats((err, formats) => {
+    ffmpeg.getAvailableFormats((err) => {
       if (err) {
         console.error('FFMPEG not found:', err.message);
         resolve(false);
