@@ -10,6 +10,8 @@ import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Loader from '../components/Loader';
 import ChatBox from '../components/ChatBox';
+import RecordingControls from '../components/RecordingControls';
+import { useRecording } from '../hooks/useRecording';
 import socket from '../services/socket';
 
 /**
@@ -37,6 +39,15 @@ const GamePageContent = () => {
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const hasShownEndModalRef = useRef(false);
+
+  // Hook de gravação
+  const {
+    isRecording,
+    duration,
+    error: recordingError,
+    startRecording,
+    stopRecording,
+  } = useRecording(gameId);
 
   // Garantir que o socket tenha userId quando conectar
   useEffect(() => {
@@ -165,6 +176,20 @@ const GamePageContent = () => {
 
           {/* Sidebar - Clue Input e Chat */}
           <div className="lg:col-span-1 space-y-4">
+            {/* Recording Controls */}
+            {gameState?.status === 'active' && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
+                <RecordingControls
+                  isRecording={isRecording}
+                  duration={duration}
+                  error={recordingError}
+                  onStart={startRecording}
+                  onStop={stopRecording}
+                  disabled={!gameState || gameState.status !== 'active'}
+                />
+              </div>
+            )}
+
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
               <h2 className="text-lg font-semibold mb-4 text-secondary-900 dark:text-white">
                 {isSpymaster ? 'Sua Dica' : 'Aguardando Dica'}
