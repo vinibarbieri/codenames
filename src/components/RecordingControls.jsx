@@ -73,7 +73,11 @@ const RecordingControls = ({
           🎥 Gravar Partida
         </Button>
         {error && (
-          <p className="text-xs text-error-600 dark:text-error-400">{error}</p>
+          <div className="p-2 bg-error-50 dark:bg-error-900/20 rounded border border-error-200 dark:border-error-800">
+            <p className="text-xs text-error-700 dark:text-error-300 font-medium">
+              ⚠️ {error}
+            </p>
+          </div>
         )}
       </div>
 
