@@ -9,7 +9,9 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import gameRoutes from './routes/game.js';
+import chatRoutes from './routes/chatRoutes.js';
 import initializeSocketIO from './socket/index.js';
+import { startCleanupCronjob } from './services/chatCleanupService.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -94,6 +96,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Start server
 const startServer = async () => {
@@ -101,6 +104,9 @@ const startServer = async () => {
 
   // Inicializar Socket.io
   initializeSocketIO(io);
+
+  // Iniciar cronjob de limpeza de mensagens antigas
+  startCleanupCronjob();
 
   httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);

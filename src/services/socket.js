@@ -19,6 +19,22 @@ const socket = io(getBackendUrl(), {
 // Event listeners para debug
 socket.on('connect', () => {
   console.log('Socket conectado:', socket.id);
+  
+  // Tentar obter userId do localStorage se disponível
+  // Isso é necessário para o chat funcionar mesmo sem entrar na fila/jogo
+  const token = localStorage.getItem('token');
+  if (token && !socket.userId) {
+    try {
+      // Decodificar JWT para obter userId (sem verificar assinatura, apenas para obter o ID)
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.userId) {
+        socket.userId = payload.userId;
+        console.log('Socket userId configurado:', socket.userId);
+      }
+    } catch (err) {
+      console.warn('Não foi possível obter userId do token:', err);
+    }
+  }
 });
 
 socket.on('disconnect', reason => {
