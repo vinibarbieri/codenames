@@ -20,6 +20,7 @@ export const useRecording = (gameId) => {
   const startTimeRef = useRef(null);
   const recordingIdRef = useRef(null);
   const videoChunksRef = useRef([]);
+  const streamRef = useRef(null);
 
   // Limpar intervalo ao desmontar
   useEffect(() => {
@@ -80,6 +81,8 @@ export const useRecording = (gameId) => {
             video: false,
           });
         }
+        // Armazenar stream na ref para acesso em callbacks
+        streamRef.current = stream;
       } catch (mediaError) {
         // Tratar erros específicos do getUserMedia
         if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
@@ -149,7 +152,9 @@ export const useRecording = (gameId) => {
             console.error('Recording ID não encontrado ao parar gravação');
             setError('Erro: ID de gravação não encontrado');
             setIsRecording(false);
-            stream.getTracks().forEach((track) => track.stop());
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach((track) => track.stop());
+            }
             return;
           }
           
@@ -157,12 +162,18 @@ export const useRecording = (gameId) => {
           await stopRecordingBackend(blob, currentRecordingId);
           
           // Parar todas as tracks
-          stream.getTracks().forEach((track) => track.stop());
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
         } catch (err) {
           console.error('Erro ao processar gravação:', err);
           setError(err.message || 'Erro ao processar gravação');
           setIsRecording(false);
-          stream.getTracks().forEach((track) => track.stop());
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
         }
       };
 
@@ -173,7 +184,10 @@ export const useRecording = (gameId) => {
         setIsRecording(false);
         
         // Parar todas as tracks em caso de erro
-        stream.getTracks().forEach((track) => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
         
         // Limpar estado
         if (durationIntervalRef.current) {
@@ -271,8 +285,9 @@ export const useRecording = (gameId) => {
       }
       
       // Parar stream se foi criado
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
     }
   };
