@@ -661,7 +661,16 @@ const initializeSocketIO = io => {
         const sanitizedMessage = DOMPurify.sanitize(message, {
           ALLOWED_TAGS: [], // Não permitir tags HTML
           ALLOWED_ATTR: [],
-        });
+        }).trim();
+
+        // Validar se a mensagem não está vazia após sanitização
+        // (DOMPurify pode remover todo o conteúdo se for apenas HTML/scripts)
+        if (!sanitizedMessage || sanitizedMessage.length === 0) {
+          socket.emit('chat:error', { 
+            message: 'Mensagem inválida. Tags HTML e scripts não são permitidos.' 
+          });
+          return;
+        }
 
         // Validar gameId se type for 'game'
         let finalGameId = null;
