@@ -10,8 +10,10 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import gameRoutes from './routes/game.js';
 import chatRoutes from './routes/chatRoutes.js';
+import recordingRoutes from './routes/recordingRoutes.js';
 import initializeSocketIO from './socket/index.js';
 import { startCleanupCronjob } from './services/chatCleanupService.js';
+import { startCleanupCronjob as startRecordingCleanupCronjob } from './services/recordingCleanupService.js';
 import { authenticateSocket } from './middleware/socketAuth.js';
 import { initGridFS } from './utils/gridfs.js';
 
@@ -106,6 +108,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/recordings', recordingRoutes);
 
 // Start server
 const startServer = async () => {
@@ -116,6 +119,9 @@ const startServer = async () => {
 
   // Iniciar cronjob de limpeza de mensagens antigas
   startCleanupCronjob();
+
+  // Iniciar cronjob de limpeza de gravações expiradas
+  startRecordingCleanupCronjob();
 
   httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
