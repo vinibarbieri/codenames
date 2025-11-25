@@ -51,7 +51,7 @@ const ChatMessage = ({ nickname, avatar, message, createdAt, isOwn = false }) =>
       <Avatar src={avatar} name={nickname} size="sm" />
       
       <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : ''}`}>
-        <div className="flex items-baseline gap-2 mb-1">
+        <div className={`flex items-baseline gap-2 mb-1 ${isOwn ? 'justify-end' : ''}`}>
           <span className="font-semibold text-sm text-secondary-900 dark:text-white">
             {nickname}
           </span>
