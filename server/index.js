@@ -10,6 +10,8 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import gameRoutes from './routes/game.js';
 import initializeSocketIO from './socket/index.js';
+import { initializeGridFS } from './config/gridfs.js';
+import { checkFFMPEGInstalled } from './services/RecordingService.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -75,6 +77,9 @@ const connectDB = async () => {
     }
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ MongoDB connected successfully');
+
+    // Initialize GridFS after MongoDB connection
+    initializeGridFS();
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     process.exit(1);
@@ -98,6 +103,12 @@ app.use('/api/games', gameRoutes);
 // Start server
 const startServer = async () => {
   await connectDB();
+
+  // Check FFMPEG installation (non-blocking)
+  checkFFMPEGInstalled().catch(err => {
+    console.warn('⚠️  FFMPEG check failed:', err.message);
+    console.warn('⚠️  Recording features may not work without FFMPEG');
+  });
 
   // Inicializar Socket.io
   initializeSocketIO(io);
