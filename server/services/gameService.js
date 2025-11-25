@@ -197,8 +197,17 @@ export const updatePlayerScores = async game => {
     const isWinner = player.team === game.winner;
     const points = isWinner ? baseWinPoints : baseLosePoints;
 
+    // Buscar o usuário atual para verificar a pontuação antes de atualizar
+    const user = await User.findById(player.userId);
+    if (!user) {
+      throw new Error(`User ${player.userId} not found`);
+    }
+
+    // Calcular nova pontuação e garantir que não fique negativa
+    const newScore = Math.max(0, (user.score || 0) + points);
+
     await User.findByIdAndUpdate(player.userId, {
-      $inc: { score: points },
+      $set: { score: newScore },
     });
   });
 
