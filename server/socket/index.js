@@ -137,7 +137,13 @@ const createMatch = async (io, playersArray) => {
 const initializeSocketIO = io => {
   // Namespace padrão '/'
   io.on('connection', socket => {
-    logger.info(`Cliente conectado: ${socket.id}`);
+    logger.info(`Cliente conectado: ${socket.id}${socket.userId ? ` (userId: ${socket.userId})` : ' (não autenticado)'}`);
+    
+    // Se o socket tem userId (autenticado), armazenar mapeamento
+    if (socket.userId) {
+      userSockets.set(socket.userId, socket.id);
+      logger.debug(`Socket ${socket.id} autenticado como userId ${socket.userId}`);
+    }
     
     // Entrar automaticamente na room 'general' ao conectar
     socket.join('general');

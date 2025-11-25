@@ -12,6 +12,7 @@ import gameRoutes from './routes/game.js';
 import chatRoutes from './routes/chatRoutes.js';
 import initializeSocketIO from './socket/index.js';
 import { startCleanupCronjob } from './services/chatCleanupService.js';
+import { authenticateSocket } from './middleware/socketAuth.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -54,6 +55,9 @@ const io = new SocketIOServer(httpServer, {
     methods: ['GET', 'POST'],
   },
 });
+
+// Aplicar middleware de autenticação
+io.use(authenticateSocket);
 
 // Middleware
 app.use(helmet());
