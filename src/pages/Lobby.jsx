@@ -214,7 +214,7 @@ const Lobby = () => {
                             {match.result}
                           </div>
                           <div className="text-sm text-gray-600 dark:text-gray-400">
-                            +{match.score} pts
+                            {match.score} pts
                           </div>
                         </div>
                       </div>
