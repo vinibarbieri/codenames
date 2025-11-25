@@ -9,9 +9,11 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import gameRoutes from './routes/game.js';
+import recordingRoutes from './routes/recordings.js';
 import initializeSocketIO from './socket/index.js';
 import { initializeGridFS } from './config/gridfs.js';
 import { checkFFMPEGInstalled } from './services/RecordingService.js';
+import { initializeCleanupJobs } from './utils/cleanupJobs.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -99,6 +101,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
+app.use('/api/recordings', recordingRoutes);
 
 // Start server
 const startServer = async () => {
@@ -109,6 +112,13 @@ const startServer = async () => {
     console.warn('⚠️  FFMPEG check failed:', err.message);
     console.warn('⚠️  Recording features may not work without FFMPEG');
   });
+
+  // Initialize cleanup jobs (cronjobs)
+  try {
+    initializeCleanupJobs();
+  } catch (err) {
+    console.warn('⚠️  Failed to initialize cleanup jobs:', err.message);
+  }
 
   // Inicializar Socket.io
   initializeSocketIO(io);
