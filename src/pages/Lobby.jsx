@@ -22,7 +22,7 @@ const Lobby = () => {
     if (socket.connected && user?.id && !socket.userId) {
       socket.userId = user.id || user._id;
     }
-  }, [user, socket.connected]);
+  }, [user]);
 
   useEffect(() => {
     fetchData();
