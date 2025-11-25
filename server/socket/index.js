@@ -1,7 +1,7 @@
 import winston from 'winston';
 import DOMPurify from 'isomorphic-dompurify';
 import QueueService from '../services/QueueService.js';
-import { initializeGame, checkGameResult } from '../services/gameService.js';
+import { initializeGame, checkGameResult, updatePlayerScores } from '../services/gameService.js';
 import Game from '../models/Game.js';
 import ChatMessage from '../models/ChatMessage.js';
 import User from '../models/User.js';
@@ -448,6 +448,14 @@ const initializeSocketIO = io => {
           // Recarregar o jogo do banco para garantir que todas as mudanças foram aplicadas
           const finalGame = await Game.findById(gameId);
           
+          // Atualizar pontuação dos jogadores
+          try {
+            await updatePlayerScores(finalGame);
+            logger.info(`Pontuações atualizadas para o jogo ${gameId}`);
+          } catch (error) {
+            logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+          }
+          
           // Enviar estado completo do jogo para todos os jogadores
           const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
           for (const socketInGame of socketsInGame) {
@@ -518,9 +526,18 @@ const initializeSocketIO = io => {
 
         await game.save();
 
+        // Atualizar pontuação dos jogadores
+        try {
+          await updatePlayerScores(game);
+          logger.info(`Pontuações atualizadas para o jogo ${gameId} (desistência)`);
+        } catch (error) {
+          logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+        }
+
         // Broadcast fim de jogo
         io.to(`game:${gameId}`).emit('game:end', {
           winner,
+          reason: 'forfeit',
         });
 
         logger.info(`Jogo ${gameId} finalizado por desistência. Vencedor: ${winner}`);
@@ -589,7 +606,14 @@ const initializeSocketIO = io => {
 
           logger.info(`Timer expirado no jogo ${gameId}. Turno passado para ${updatedGame.currentTurn}`);
         } else {
-          // Se o jogo terminou, apenas enviar o estado atualizado
+          // Se o jogo terminou, atualizar pontuações e enviar estado atualizado
+          try {
+            await updatePlayerScores(updatedGame);
+            logger.info(`Pontuações atualizadas para o jogo ${gameId} (timeout)`);
+          } catch (error) {
+            logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+          }
+          
           const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
           for (const socketInGame of socketsInGame) {
             if (socketInGame.userId) {
@@ -597,7 +621,7 @@ const initializeSocketIO = io => {
               socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
             }
           }
-
+          
           io.to(`game:${gameId}`).emit('game:end', {
             winner: updatedGame.winner,
             reason: 'timeout',

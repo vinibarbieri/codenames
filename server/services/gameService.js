@@ -189,17 +189,25 @@ export const updatePlayerScores = async game => {
   const User = (await import('../models/User.js')).default;
 
   // Calculate points
-  const baseWinPoints = 10;
-  const baseLosePoints = 3;
-  const fastWinBonus = game.turnCount < 10 ? 5 : 0;
+  const baseWinPoints = 50;
+  const baseLosePoints = -20;
 
   // Update scores for all players
   const updatePromises = game.players.map(async player => {
     const isWinner = player.team === game.winner;
-    const points = isWinner ? baseWinPoints + fastWinBonus : baseLosePoints;
+    const points = isWinner ? baseWinPoints : baseLosePoints;
+
+    // Buscar o usuário atual para verificar a pontuação antes de atualizar
+    const user = await User.findById(player.userId);
+    if (!user) {
+      throw new Error(`User ${player.userId} not found`);
+    }
+
+    // Calcular nova pontuação e garantir que não fique negativa
+    const newScore = Math.max(0, (user.score || 0) + points);
 
     await User.findByIdAndUpdate(player.userId, {
-      $inc: { score: points },
+      $set: { score: newScore },
     });
   });
 

@@ -48,52 +48,16 @@ const Ranking = () => {
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/ranking?${params.toString()}`
+        `${import.meta.env.VITE_API_URL}/users/ranking?${params.toString()}`
       );
 
       if (response.ok) {
         const data = await response.json();
         setPlayers(data.data || []);
       } else {
-        // Mock data for development
-        const mockPlayers = Array.from({ length: 100 }, (_, i) => ({
-          id: i + 1,
-          nickname: `Player${i + 1}`,
-          score: 2000 - i * 15,
-          avatar: '',
-          location: {
-            city: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte'][i % 3],
-            state: ['SP', 'RJ', 'MG'][i % 3],
-            country: 'Brasil',
-          },
-          stats: {
-            totalMatches: Math.floor(Math.random() * 100) + 50,
-            wins: Math.floor(Math.random() * 60) + 20,
-            losses: Math.floor(Math.random() * 40) + 10,
-            winRate: (Math.random() * 40 + 40).toFixed(1),
-          },
-        }));
-
-        // Filter by search
-        let filtered = mockPlayers;
-        if (debouncedSearch) {
-          filtered = mockPlayers.filter(p =>
-            p.nickname.toLowerCase().includes(debouncedSearch.toLowerCase())
-          );
-        }
-
-        // Filter by location
-        if (filter === 'country') {
-          filtered = filtered.filter(
-            p => p.location.country === (user?.location?.country || 'Brasil')
-          );
-        } else if (filter === 'state') {
-          filtered = filtered.filter(
-            p => p.location.state === (user?.location?.state || 'SP')
-          );
-        }
-
-        setPlayers(filtered);
+        // Se a API falhar, mostrar lista vazia e logar erro
+        console.error('Erro ao buscar ranking:', response.status, response.statusText);
+        setPlayers([]);
       }
     } catch (error) {
       console.error('Erro ao buscar ranking:', error);
