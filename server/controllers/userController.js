@@ -392,21 +392,53 @@ export const getRanking = async (req, res) => {
       .sort({ score: -1 })
       .limit(parseInt(limit));
 
-    const ranking = users.map(user => ({
-      id: user._id,
-      nickname: user.nickname,
-      avatar: user.avatar,
-      score: user.score,
-      location: user.location,
-      role: user.role,
-      // TODO: Add stats when Match model is implemented
-      stats: {
-        totalMatches: 0,
-        wins: 0,
-        losses: 0,
-        winRate: 0,
-      },
-    }));
+    // Import Game model
+    const Game = (await import('../models/Game.js')).default;
+
+    // Calculate stats for each user
+    const ranking = await Promise.all(
+      users.map(async user => {
+        // Find all finished games where user participated
+        const finishedGames = await Game.find({
+          'players.userId': user._id,
+          status: 'finished',
+          winner: { $ne: '' }, // Only games with a winner
+        });
+
+        // Calculate statistics
+        let wins = 0;
+        let losses = 0;
+
+        finishedGames.forEach(game => {
+          const player = game.players.find(
+            p => p.userId.toString() === user._id.toString()
+          );
+          if (player && player.team === game.winner) {
+            wins++;
+          } else if (player) {
+            losses++;
+          }
+        });
+
+        const totalMatches = wins + losses;
+        const winRate = totalMatches > 0 ? ((wins / totalMatches) * 100).toFixed(1) : '0.0';
+
+        return {
+          id: user._id,
+          nickname: user.nickname,
+          avatar: user.avatar,
+          score: user.score,
+          location: user.location,
+          role: user.role,
+          stats: {
+            totalMatches,
+            wins,
+            losses,
+            winRate: parseFloat(winRate),
+          },
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,

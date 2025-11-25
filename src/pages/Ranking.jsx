@@ -216,14 +216,18 @@ const Ranking = () => {
                           <td className="py-4 px-4 text-center">
                             <span
                               className={`font-semibold ${
-                                parseFloat(player.stats.winRate) >= 60
+                                player.stats.totalMatches > 0 && player.stats.winRate >= 60
                                   ? 'text-success-600 dark:text-success-400'
-                                  : parseFloat(player.stats.winRate) >= 50
+                                  : player.stats.totalMatches > 0 && player.stats.winRate >= 50
                                     ? 'text-warning-600 dark:text-warning-400'
-                                    : 'text-error-600 dark:text-error-400'
+                                    : player.stats.totalMatches > 0
+                                      ? 'text-error-600 dark:text-error-400'
+                                      : 'text-gray-400 dark:text-gray-500'
                               }`}
                             >
-                              {player.stats.winRate}%
+                              {player.stats.totalMatches > 0
+                                ? `${player.stats.winRate.toFixed(1)}%`
+                                : 'N/A'}
                             </span>
                           </td>
                         </tr>
