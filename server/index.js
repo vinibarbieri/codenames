@@ -14,6 +14,8 @@ import initializeSocketIO from './socket/index.js';
 import { startCleanupCronjob } from './services/chatCleanupService.js';
 import { authenticateSocket } from './middleware/socketAuth.js';
 import soloGameRoutes from './routes/soloGameRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import configService from './services/configService.js';
 
 dotenv.config({ path: '../.env' });
 
@@ -109,6 +111,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/games/solo', soloGameRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/config', adminRoutes); // Rotas públicas de config
 
 // Nota: PeerServer pode ser configurado separadamente se necessário
 // Por padrão, usamos o servidor público do PeerJS (0.peerjs.com)
@@ -116,6 +120,9 @@ app.use('/api/chat', chatRoutes);
 // Start server
 const startServer = async () => {
   await connectDB();
+
+  // Inicializar configurações padrão
+  await configService.initializeDefaults();
 
   // Inicializar Socket.io
   initializeSocketIO(io);
