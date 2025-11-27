@@ -29,10 +29,10 @@ socket.on('connect_error', error => {
   console.error('Erro de conexão Socket.io:', error);
 });
 
-socket.on("game:join", ({ gameId, userId }) => {
-  console.log(`[SOCKET] Usuário ${userId} entrou na sala ${gameId}`);
-  socket.join(gameId);
-});
+// socket.on("game:join", ({ gameId, userId }) => {
+//   console.log(`[SOCKET] Usuário ${userId} entrou na sala ${gameId}`);
+//   socket.join(gameId);
+// });
 
 export default socket;
 

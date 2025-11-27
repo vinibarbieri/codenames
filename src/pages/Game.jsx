@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GameProvider, useGame } from '../contexts/GameContext';
 import GameBoard from '../components/GameBoard';
@@ -52,6 +52,14 @@ const GamePageContent = () => {
   const canGiveClue = isSpymaster && isMyTurn && !gameState?.currentClue?.word;
   const canMakeGuess = isOperative && isMyTurn && gameState?.currentClue?.word && gameState?.currentClue?.remainingGuesses > 0;
 
+  const redRemaining = useMemo(() => {
+    return getRemainingCards('red');
+  }, [gameState?.board]);
+
+  const blueRemaining = useMemo(() => {
+    return getRemainingCards('blue');
+  }, [gameState?.board]);
+
   const handleClueSubmit = (clue) => {
     sendClue(clue);
   };
@@ -102,8 +110,7 @@ const GamePageContent = () => {
     );
   }
 
-  const redRemaining = getRemainingCards('red');
-  const blueRemaining = getRemainingCards('blue');
+
   const isWinner = gameState?.winner === getMyTeam();
   const winnerTeam = gameState?.winner === 'red' ? 'Vermelha' : gameState?.winner === 'blue' ? 'Azul' : '';
 

@@ -37,9 +37,9 @@ export const createSoloGame = async (req, res) => {
 
     // Configurar jogadores baseado no modo
     let players;
-if (mode === 'bot-spymaster') {
+    if (mode === 'bot-spymaster') {
   // Jogador é operative, bot é spymaster
-  players = [
+    players = [
     // humano
     {
       userId,
@@ -114,31 +114,22 @@ if (mode === 'bot-spymaster') {
 
     console.log("TURN INICIAL:", game.currentTurn, "PLAYER TEAM:", team);
 
-    if (mode === 'bot-operative') {
-    game.currentTurn = team;       // humano começa dando dica
-    } else {
-    game.currentTurn = botTeam;    // bot começa dando dica
-    }
-    
-    if (mode === 'bot-spymaster') {
-        game.currentTurn = botTeam;
-    } else {
-        game.currentTurn = team;
-    }
+    game.currentTurn = team;
 
     game.soloMode = {
-    type: mode,
-    difficulty,
-    playerTeam: team,
-    botTeam,
+      type: mode,
+      difficulty,
+      playerTeam: team,
+      botTeam,
     };
-    
+
     await game.save();
 
-    console.log("TURN INICIAL:", game.currentTurn, "PLAYER TEAM:", team);
+    console.log("TURN INICIAL (após ajustar):", game.currentTurn, "PLAYER TEAM:", team);
 
-    // Se o bot começar como spymaster, dar a primeira dica automaticamente
-    if (mode === 'bot-spymaster' && game.currentTurn === team) {
+    // Se o bot for spymaster, ele dá a primeira dica automaticamente
+    // para o time do jogador (mesmo time do turno atual)
+    if (mode === 'bot-spymaster') {
       setTimeout(async () => {
         await handleBotSpymasterTurn(game._id.toString());
       }, 2000);
@@ -211,38 +202,58 @@ export const makeSoloGuess = async (req, res) => {
     const gameEnded = updatedGame.status === 'finished';
 
     // Emitir evento de revelação
-    io.to(gameId).emit('game:reveal', {
+    io.to(`game:${gameId}`).emit('game:reveal', {
       cardIndex,
       cardType: card.type,
       isCorrect: isCorrectGuess,
     });
 
+    // 🔥 NOVO: enviar estado atualizado após cada revelação
+    const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+    for (const socketInGame of socketsInGame) {
+      if (socketInGame.userId) {
+        const userRole = updatedGame.getPlayerRole(socketInGame.userId);
+        socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
+      }
+    }
+
     // Se acertou e ainda tem palpites, pode continuar
     // Se errou ou acabaram os palpites, passa o turno
     if (!gameEnded && (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0)) {
-      updatedGame.currentTurn = updatedGame.soloMode.botTeam;
-      updatedGame.currentClue = { word: '', number: 0, remainingGuesses: 0 };
-      updatedGame.turnCount += 1;
-      await updatedGame.save();
-
-      // Turno do bot
-      io.to(gameId).emit('game:turn', {
-        currentTurn: updatedGame.currentTurn,
-        turnCount: updatedGame.turnCount,
-      });
-
-      // Bot jogará automaticamente
-      if (updatedGame.soloMode.type === 'bot-spymaster') {
-        setTimeout(() => handleBotSpymasterTurn(gameId), 2000);
-      } else {
-        setTimeout(() => handleBotOperativeTurn(gameId), 2000);
-      }
+    // 👉 Diferença de comportamento por modo solo
+    if (updatedGame.soloMode.type === 'bot-spymaster') {
+      // No modo bot-spymaster, SEMPRE continua sendo o turno do jogador
+      updatedGame.currentTurn = updatedGame.soloMode.playerTeam;
     } else {
-      await updatedGame.save();
+      // No modo bot-operative, passa o turno pro botTeam
+      updatedGame.currentTurn = updatedGame.soloMode.botTeam;
     }
 
+    updatedGame.currentClue = { word: '', number: 0, remainingGuesses: 0 };
+    updatedGame.turnCount += 1;
+    await updatedGame.save();
+
+    // Notificar front da mudança de "round"
+    io.to(`game:${gameId}`).emit('game:turn', {
+      currentTurn: updatedGame.currentTurn,
+      turnCount: updatedGame.turnCount,
+      currentClue: updatedGame.currentClue,
+    });
+
+    // Bot joga automaticamente dependendo do modo
+    if (updatedGame.soloMode.type === 'bot-spymaster') {
+      // Bot do SEU time dá outra dica
+      setTimeout(() => handleBotSpymasterTurn(gameId), 2000);
+    } else {
+      // No outro modo, o bot faz turno completo
+      setTimeout(() => handleBotOperativeTurn(gameId), 2000);
+    }
+  } else {
+    await updatedGame.save();
+  }
+
     if (gameEnded) {
-      io.to(gameId).emit('game:end', {
+      io.to(`game:${gameId}`).emit('game:end', {
         winner: updatedGame.winner,
         winnerTeam: updatedGame.winner,
       });
@@ -364,9 +375,14 @@ const handleBotSpymasterTurn = async (gameId) => {
     await game.save();
 
     // Emitir dica
-    io.to(gameId).emit('game:clue', {
-      clue: game.currentClue,
-    });
+    io.to(`game:${gameId}`).emit('game:clue', { clue: game.currentClue });
+    const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+    for (const socketInGame of socketsInGame) {
+      if (socketInGame.userId) {
+        const userRole = game.getPlayerRole(socketInGame.userId);
+        socketInGame.emit('game:state', game.toPublicJSON(socketInGame.userId, userRole));
+      }
+    }
 
     console.log(`Bot deu dica: ${clue.word} ${clue.number}`);
   } catch (error) {
@@ -379,26 +395,31 @@ const handleBotSpymasterTurn = async (gameId) => {
  */
 const handleBotOperativeGuesses = async (gameId) => {
   try {
-    const game = await Game.findById(gameId);
+    let game = await Game.findById(gameId);
     if (!game || game.status !== 'active') return;
 
     const difficulty = game.soloMode.difficulty;
 
+    // No modo bot-operative, o bot adivinha pelo MESMO time do jogador
     const guessTeam = game.soloMode.type === 'bot-operative'
       ? game.soloMode.playerTeam
       : game.soloMode.botTeam;
 
     console.log('[bot guess] tentando adivinhar...', game.currentClue, guessTeam);
 
+    // Enquanto ainda houver palpites e o jogo estiver ativo
     while (game.currentClue.remainingGuesses > 0 && game.status === 'active') {
+      // Delay para simular pensamento
       await botThinkingDelay(difficulty);
 
-      const plainBoard = game.board.map(c => ({
+      // Montar board simplificado
+      const plainBoard = game.board.map((c) => ({
         word: c.word,
         type: c.type,
         revealed: c.revealed,
       }));
 
+      // Índice da carta escolhida pelo bot
       const guessIndex = await generateBotGuess(
         plainBoard,
         game.currentClue,
@@ -411,23 +432,27 @@ const handleBotOperativeGuesses = async (gameId) => {
       const card = game.board[guessIndex];
       console.log('Bot escolheu carta:', card);
 
+      // Se carta inválida ou já revelada, tenta de novo
       if (!card || card.revealed) continue;
 
-      // Revelar carta
+      // Revelar carta no estado em memória
       game.board[guessIndex].revealed = true;
       game.currentClue.remainingGuesses -= 1;
 
       const isCorrectGuess = card.type === guessTeam;
 
-      // 🔥 CORRIGIDO: Agora emitindo para a sala certa
+      // Salvar antes de checar resultado
+      await game.save();
+
+      // Emitir revelação para os clients
       io.to(`game:${gameId}`).emit('game:reveal', {
         cardIndex: guessIndex,
         cardType: card.type,
         isCorrect: isCorrectGuess,
       });
 
-      // Verificar resultado após a revelação
-      const updatedGame = await checkGameResult(game, guessTeam);
+      // Verificar se o jogo terminou
+      let updatedGame = await checkGameResult(game, guessTeam);
       const gameEnded = updatedGame.status === 'finished';
 
       if (gameEnded) {
@@ -437,7 +462,7 @@ const handleBotOperativeGuesses = async (gameId) => {
         return;
       }
 
-      // Passar turno se for erro
+      // Se o bot errou, passa turno para o jogador
       if (!isCorrectGuess) {
         updatedGame.currentTurn = updatedGame.soloMode.playerTeam;
         updatedGame.currentClue = { word: '', number: 0, remainingGuesses: 0 };
@@ -445,7 +470,6 @@ const handleBotOperativeGuesses = async (gameId) => {
 
         await updatedGame.save();
 
-        // 🔥 CORRIGIDO AQUI TAMBÉM
         io.to(`game:${gameId}`).emit('game:turn', {
           currentTurn: updatedGame.currentTurn,
           turnCount: updatedGame.turnCount,
@@ -455,22 +479,22 @@ const handleBotOperativeGuesses = async (gameId) => {
         return;
       }
 
-      // Se acertou, salvar e continuar o loop
-      await updatedGame.save();
+      // Se acertou e ainda tem guesses, continua o loop usando o estado atualizado
+      game = updatedGame;
     }
 
-    // Sem mais palpites → troca de turno
-    if (game.currentClue.remainingGuesses === 0) {
+    // Acabaram os palpites do bot → passa turno para o jogador
+    if (game.currentClue.remainingGuesses === 0 && game.status === 'active') {
       game.currentTurn = game.soloMode.playerTeam;
       game.currentClue = { word: '', number: 0, remainingGuesses: 0 };
       game.turnCount += 1;
 
       await game.save();
 
-      // 🔥 MUDADO AQUI TAMBÉM
       io.to(`game:${gameId}`).emit('game:turn', {
         currentTurn: game.currentTurn,
         turnCount: game.turnCount,
+        currentClue: game.currentClue,
       });
     }
   } catch (error) {
@@ -503,7 +527,7 @@ const handleBotOperativeTurn = async (gameId) => {
 
     await game.save();
 
-    io.to(gameId).emit('game:clue', {
+    io.to(`game:${gameId}`)('game:clue', {
       clue: game.currentClue,
     });
 

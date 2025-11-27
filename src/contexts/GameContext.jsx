@@ -54,10 +54,18 @@ export const GameProvider = ({ children, gameId }) => {
 
     const handleGameClue = data => {
       console.log('Dica recebida:', data);
-      setGameState(prev => ({
-        ...prev,
-        currentClue: data.clue,
-      }));
+
+      setGameState(prev => {
+        if (!prev) {
+          console.warn("⚠️ Ignorando game:clue porque gameState ainda não existe.");
+          return prev;
+        }
+
+        return {
+          ...prev,
+          currentClue: data.clue,
+        };
+      });
     };
 
     const handleGameReveal = data => {
@@ -140,10 +148,12 @@ export const GameProvider = ({ children, gameId }) => {
       }
     };
 
-    if (socket.connected) {
-      joinGame();
-    } else {
-      socket.once('connect', joinGame);
+    // Evitar múltiplos game:join
+    if (!hasJoinedRef.current) {
+      const realUserId = user.id || user._id;
+      socket.emit("game:join", { gameId, userId: realUserId });
+      console.log("Emitindo game:join", { gameId, realUserId });
+      hasJoinedRef.current = true;
     }
 
     // Cleanup

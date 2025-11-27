@@ -142,10 +142,11 @@ const gameSchema = new mongoose.Schema(
 
 // Method to get public game data (hides card types for operatives)
 gameSchema.methods.toPublicJSON = function (userId, userRole) {
-  const gameData = {
+  const publicData = {
     id: this._id,
     players: this.players.map(p => ({
       userId: p.userId,
+      username: p.username || "Unknown",
       team: p.team,
       role: p.role,
     })),
@@ -161,59 +162,47 @@ gameSchema.methods.toPublicJSON = function (userId, userRole) {
     updatedAt: this.updatedAt,
   };
 
-  const publicData = {
-    _id: this._id,
-    players: this.players.map(p => ({
-      userId: p.userId,
-      username: p.username || 'Unknown',
-      team: p.team,
-      role: p.role,
-    })),
-    currentTurn: this.currentTurn,
-    currentClue: this.currentClue,
-    status: this.status,
-    winner: this.winner,
-    mode: this.mode,
-    turnCount: this.turnCount,
-    startedAt: this.startedAt,
-    finishedAt: this.finishedAt,
-  };
-
-  // Show full board only to spymasters or if game is finished
-  if (userRole === 'spymaster' || this.status === 'finished') {
-    gameData.board = this.board;
-  } else {
-    // Hide card types from operatives
-    gameData.board = this.board.map(card => ({
-      word: card.word,
-      revealed: card.revealed,
-      type: card.revealed ? card.type : 'hidden',
-    }));
-  }
-
-  // Para modo solo, sempre mostrar soloMode
-  if (this.mode === 'solo') {
+  // Solo mode info
+  if (this.mode === "solo") {
     publicData.soloMode = this.soloMode;
   }
 
-  // Lógica do board baseada no role
-  if (userRole === 'spymaster') {
-    // Spymaster vê todos os tipos
+  // Board visibility rules
+  if (this.mode === "solo") {
+    // SOLO MODE: sempre mostrar os tipos REAIS (necessário para o bot + contagem)
     publicData.board = this.board.map(card => ({
       word: card.word,
       type: card.type,
       revealed: card.revealed,
     }));
-  } else {
-    // Operatives só veem cartas reveladas
+  }
+  else if (userRole === "spymaster" || this.status === "finished") {
+    // Spymaster vê tudo
     publicData.board = this.board.map(card => ({
       word: card.word,
-      type: card.revealed ? card.type : null,
+      type: card.type,
       revealed: card.revealed,
+    }));
+  } 
+  else {
+    // Operatives não veem tipos ocultos
+    publicData.board = this.board.map(card => ({
+      word: card.word,
+      revealed: card.revealed,
+      type: card.revealed ? card.type : null,
     }));
   }
 
-  return gameData;
+  
+  publicData.redRemaining = this.board.filter(
+    c => c.type === "red" && !c.revealed
+  ).length;
+
+  publicData.blueRemaining = this.board.filter(
+    c => c.type === "blue" && !c.revealed
+  ).length;
+
+  return publicData;
 };
 
 // Method to check if user is in game
