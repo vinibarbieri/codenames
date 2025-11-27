@@ -134,7 +134,7 @@ const Lobby = () => {
                     className="w-full"
                     onClick={handlePlayVsBot}
                   >
-                    🤖 Jogar vs Bot
+                    🤖 Jogar com Bot
                   </Button>
                 </div>
               </Card>
