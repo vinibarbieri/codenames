@@ -10,8 +10,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "make-admin": "node scripts/makeAdmin.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "codenames",
