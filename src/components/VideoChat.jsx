@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import peerService from '../services/peerService';
+import socket from '../services/socket';
 import Button from './Button';
 
 /**
@@ -11,6 +13,7 @@ import Button from './Button';
  * @param {function} props.onClose - Callback quando o videochat é fechado
  */
 const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
+  const { id: gameId } = useParams();
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -23,94 +26,59 @@ const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
   const remoteVideoRef = useRef(null);
   const mediaCallRef = useRef(null);
   const hasInitializedRef = useRef(false);
+  const localStreamRef = useRef(null);
+  const handleIncomingCallRef = useRef(null);
 
-  // Inicializar Peer e capturar stream local
-  useEffect(() => {
-    if (!userId || !isVisible || hasInitializedRef.current) return;
-
-    const initializeVideoChat = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Inicializar Peer
-        const id = await peerService.initialize(userId);
-        setPeerId(id);
-        hasInitializedRef.current = true;
-
-        // Capturar stream local com fallback para apenas áudio
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true,
-          });
-          setLocalStream(stream);
-
-          // Atualizar vídeo local
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-          }
-        } catch (mediaError) {
-          console.warn('[VideoChat] Erro ao acessar câmera, tentando apenas áudio:', mediaError);
-          
-          // Fallback: apenas áudio
-          try {
-            const audioStream = await navigator.mediaDevices.getUserMedia({
-              video: false,
-              audio: true,
-            });
-            setLocalStream(audioStream);
-            setIsVideoOff(true);
-          } catch (audioError) {
-            console.error('[VideoChat] Erro ao acessar mídia:', audioError);
-            setError('Não foi possível acessar câmera ou microfone');
-          }
-        }
-
-        // Escutar chamadas recebidas
-        peerService.onCall(handleIncomingCall);
-      } catch (err) {
-        console.error('[VideoChat] Erro ao inicializar:', err);
-        setError('Erro ao inicializar videochat');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeVideoChat();
-
-    // Cleanup
-    return () => {
-      cleanup();
-    };
-  }, [userId, isVisible, cleanup, handleIncomingCall]);
-
-  // Iniciar chamada quando remotePeerId for fornecido
-  useEffect(() => {
-    if (remotePeerId && localStream && peerId && !mediaCallRef.current) {
-      startCall(remotePeerId);
+  /**
+   * Responde a uma chamada recebida
+   */
+  const handleIncomingCall = useCallback(call => {
+    const currentStream = localStreamRef.current;
+    if (!currentStream) {
+      console.warn('[VideoChat] Chamada recebida mas stream local não disponível');
+      call.close();
+      return;
     }
-  }, [remotePeerId, localStream, peerId, startCall]);
 
-  // Atualizar vídeo remoto quando stream mudar
+    console.log('[VideoChat] Chamada recebida de:', call.peer);
+    peerService.answer(call, currentStream);
+    mediaCallRef.current = call;
+
+    call.on('stream', stream => {
+      console.log('[VideoChat] Stream remoto recebido na resposta');
+      setRemoteStream(stream);
+    });
+
+    call.on('close', () => {
+      console.log('[VideoChat] Chamada fechada');
+      setRemoteStream(null);
+      mediaCallRef.current = null;
+    });
+
+    call.on('error', err => {
+      console.error('[VideoChat] Erro na chamada recebida:', err);
+      setError('Erro na conexão de vídeo');
+    });
+  }, []);
+
+  // Atualizar ref quando handleIncomingCall mudar
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
+    handleIncomingCallRef.current = handleIncomingCall;
+  }, [handleIncomingCall]);
 
   /**
    * Inicia uma chamada para um peer remoto
    */
   const startCall = useCallback(
     async targetPeerId => {
-      if (!localStream || !peerService.isReady()) {
+      const currentStream = localStreamRef.current;
+      if (!currentStream || !peerService.isReady()) {
         console.error('[VideoChat] Stream local ou Peer não disponível');
         return;
       }
 
       try {
-        const call = await peerService.call(targetPeerId, localStream);
+        const call = await peerService.call(targetPeerId, currentStream);
         mediaCallRef.current = call;
 
         call.on('stream', stream => {
@@ -133,50 +101,131 @@ const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
         setError('Erro ao conectar com o oponente');
       }
     },
-    [localStream]
+    []
   );
 
-  /**
-   * Responde a uma chamada recebida
-   */
-  const handleIncomingCall = useCallback(
-    call => {
-      if (!localStream) {
-        console.warn('[VideoChat] Chamada recebida mas stream local não disponível');
-        call.close();
-        return;
+  // Inicializar Peer e capturar stream local
+  useEffect(() => {
+    if (!userId || !isVisible || hasInitializedRef.current) return;
+
+    const initializeVideoChat = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Inicializar Peer
+        let id = await peerService.initialize(userId);
+        setPeerId(id);
+        hasInitializedRef.current = true;
+
+        // Compartilhar peerId via socket
+        if (socket && socket.connected && gameId) {
+          socket.emit('video:peerId', {
+            gameId,
+            peerId: id,
+            fromUserId: userId,
+          });
+        }
+
+        // Capturar stream local com fallback para apenas áudio
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          localStreamRef.current = stream;
+          setLocalStream(stream);
+
+          // Atualizar vídeo local
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+        } catch (mediaError) {
+          console.warn('[VideoChat] Erro ao acessar câmera, tentando apenas áudio:', mediaError);
+          
+          // Fallback: apenas áudio
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({
+              video: false,
+              audio: true,
+            });
+            localStreamRef.current = audioStream;
+            setLocalStream(audioStream);
+            setIsVideoOff(true);
+          } catch (audioError) {
+            console.error('[VideoChat] Erro ao acessar mídia:', audioError);
+            setError('Não foi possível acessar câmera ou microfone');
+          }
+        }
+
+        // Escutar chamadas recebidas usando ref atualizado
+        if (handleIncomingCallRef.current) {
+          peerService.onCall(handleIncomingCallRef.current);
+        }
+      } catch (err) {
+        console.error('[VideoChat] Erro ao inicializar:', err);
+        setError('Erro ao inicializar videochat');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeVideoChat();
+
+    // Cleanup
+    return () => {
+      // Limpar stream local
+      const currentStream = localStreamRef.current;
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
       }
 
-      console.log('[VideoChat] Chamada recebida de:', call.peer);
-      peerService.answer(call, localStream);
-      mediaCallRef.current = call;
+      // Remover listener de chamadas
+      if (handleIncomingCallRef.current) {
+        peerService.offCall(handleIncomingCallRef.current);
+      }
 
-      call.on('stream', stream => {
-        console.log('[VideoChat] Stream remoto recebido na resposta');
-        setRemoteStream(stream);
-      });
-
-      call.on('close', () => {
-        console.log('[VideoChat] Chamada fechada');
-        setRemoteStream(null);
+      // Fechar chamada ativa
+      if (mediaCallRef.current) {
+        mediaCallRef.current.close();
         mediaCallRef.current = null;
-      });
+      }
 
-      call.on('error', err => {
-        console.error('[VideoChat] Erro na chamada recebida:', err);
-        setError('Erro na conexão de vídeo');
-      });
-    },
-    [localStream]
-  );
+      // Limpar vídeos
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+
+      hasInitializedRef.current = false;
+    };
+  }, [userId, isVisible, gameId]);
+
+  // Iniciar chamada quando remotePeerId for fornecido
+  useEffect(() => {
+    if (remotePeerId && localStreamRef.current && peerId && !mediaCallRef.current) {
+      startCall(remotePeerId);
+    }
+  }, [remotePeerId, peerId, startCall]);
+
+  // Atualizar vídeo remoto quando stream mudar
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
 
   /**
    * Alterna mute/unmute do áudio
    */
   const toggleMute = () => {
-    if (!localStream) return;
+    const currentStream = localStreamRef.current;
+    if (!currentStream) return;
 
-    const audioTracks = localStream.getAudioTracks();
+    const audioTracks = currentStream.getAudioTracks();
     audioTracks.forEach(track => {
       track.enabled = !isMuted;
     });
@@ -188,9 +237,10 @@ const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
    * Alterna ligar/desligar vídeo
    */
   const toggleVideo = () => {
-    if (!localStream) return;
+    const currentStream = localStreamRef.current;
+    if (!currentStream) return;
 
-    const videoTracks = localStream.getVideoTracks();
+    const videoTracks = currentStream.getVideoTracks();
     videoTracks.forEach(track => {
       track.enabled = isVideoOff;
     });
@@ -199,16 +249,20 @@ const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
   };
 
   /**
-   * Limpa recursos ao desmontar
+   * Fecha o videochat
    */
-  const cleanup = useCallback(() => {
-    // Remover listener de chamadas
-    peerService.offCall(handleIncomingCall);
-
-    // Parar todos os tracks do stream local
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+  const handleClose = () => {
+    // Limpar stream local
+    const currentStream = localStreamRef.current;
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
       setLocalStream(null);
+    }
+
+    // Remover listener de chamadas
+    if (handleIncomingCallRef.current) {
+      peerService.offCall(handleIncomingCallRef.current);
     }
 
     // Fechar chamada ativa
@@ -227,13 +281,7 @@ const VideoChat = ({ userId, remotePeerId, isVisible = true, onClose }) => {
 
     setRemoteStream(null);
     hasInitializedRef.current = false;
-  }, [localStream, handleIncomingCall]);
 
-  /**
-   * Fecha o videochat
-   */
-  const handleClose = () => {
-    cleanup();
     if (onClose) onClose();
   };
 

@@ -19,8 +19,15 @@ class PeerService {
    * @returns {Promise<string>} - Peer ID gerado
    */
   async initialize(userId, options = {}) {
-    if (this.isInitialized && this.peer) {
-      return this.peerId;
+    // Se já está inicializado com o mesmo userId, retornar o ID existente
+    if (this.isInitialized && this.peer && !this.peer.destroyed) {
+      // Se o userId mudou, destruir o peer antigo
+      if (this.peerId && this.peerId !== userId && !this.peerId.startsWith(userId)) {
+        console.log('[PeerService] UserId mudou, destruindo peer antigo');
+        this.destroy();
+      } else {
+        return this.peerId;
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -52,12 +59,19 @@ class PeerService {
 
         this.peer.on('error', error => {
           console.error('[PeerService] Erro no Peer:', error);
-          if (error.type === 'peer-unavailable') {
-            // Tentar reconectar após 2 segundos
+          
+          // Se o ID já está em uso, destruir e tentar novamente com ID aleatório
+          if (error.type === 'peer-unavailable' || error.message?.includes('is taken')) {
+            console.log('[PeerService] ID já em uso, destruindo e tentando novamente...');
+            this.destroy();
+            // Tentar reconectar após 1 segundo com ID aleatório
             setTimeout(() => {
-              this.reconnect(userId, options);
-            }, 2000);
+              const randomId = `${userId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              this.initialize(randomId, options).then(resolve).catch(reject);
+            }, 1000);
+            return;
           }
+          
           reject(error);
         });
 

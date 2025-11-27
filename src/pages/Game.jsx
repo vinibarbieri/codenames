@@ -48,32 +48,13 @@ const GamePageContent = () => {
     }
   }, [user]);
 
-  // Inicializar Peer e compartilhar peerId quando entrar no jogo
+  // Cleanup: destruir peer ao sair da página do jogo
   useEffect(() => {
-    if (!gameId || !user?.id) return;
-    if (!socket.connected) return;
-
-    const initializePeer = async () => {
-      try {
-        const peerId = await peerService.initialize(user.id || user._id);
-        
-        // Compartilhar peerId com outros jogadores
-        socket.emit('video:peerId', {
-          gameId,
-          peerId,
-        });
-      } catch (error) {
-        console.error('[Game] Erro ao inicializar Peer:', error);
-      }
-    };
-
-    initializePeer();
-
-    // Cleanup ao sair
     return () => {
+      // Destruir peer quando sair da página
       peerService.destroy();
     };
-  }, [gameId, user?.id, user?._id]);
+  }, []);
 
   // Escutar eventos de videochat
   useEffect(() => {
