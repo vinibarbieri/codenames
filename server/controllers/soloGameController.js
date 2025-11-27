@@ -195,11 +195,21 @@ export const makeSoloGuess = async (req, res) => {
     const updatedGame = await checkGameResult(game, playerTeam);
     const gameEnded = updatedGame.status === 'finished';
 
+    // Calcular cartas restantes
+    const redRemaining = updatedGame.board.filter(
+      c => c.type === 'red' && !c.revealed
+    ).length;
+    const blueRemaining = updatedGame.board.filter(
+      c => c.type === 'blue' && !c.revealed
+    ).length;
+
     // Emitir evento de revelação
     io.to(`game:${gameId}`).emit('game:reveal', {
       cardIndex,
       cardType: card.type,
       isCorrect: isCorrectGuess,
+      redRemaining,
+      blueRemaining,
     });
 
     // enviar estado atualizado após cada revelação
@@ -227,11 +237,21 @@ export const makeSoloGuess = async (req, res) => {
     updatedGame.turnCount += 1;
     await updatedGame.save();
 
+    // Calcular cartas restantes
+    const redRemaining = updatedGame.board.filter(
+      c => c.type === 'red' && !c.revealed
+    ).length;
+    const blueRemaining = updatedGame.board.filter(
+      c => c.type === 'blue' && !c.revealed
+    ).length;
+
     // Notificar front da mudança de "round"
     io.to(`game:${gameId}`).emit('game:turn', {
       currentTurn: updatedGame.currentTurn,
       turnCount: updatedGame.turnCount,
       currentClue: updatedGame.currentClue,
+      redRemaining,
+      blueRemaining,
     });
 
     // Bot joga automaticamente dependendo do modo
@@ -433,11 +453,21 @@ const handleBotOperativeGuesses = async (gameId) => {
       // Salvar antes de checar resultado
       await game.save();
 
+      // Calcular cartas restantes
+      const redRemaining = game.board.filter(
+        c => c.type === 'red' && !c.revealed
+      ).length;
+      const blueRemaining = game.board.filter(
+        c => c.type === 'blue' && !c.revealed
+      ).length;
+
       // Emitir revelação para os clients
       io.to(`game:${gameId}`).emit('game:reveal', {
         cardIndex: guessIndex,
         cardType: card.type,
         isCorrect: isCorrectGuess,
+        redRemaining,
+        blueRemaining,
       });
 
       // Verificar se o jogo terminou
@@ -459,10 +489,20 @@ const handleBotOperativeGuesses = async (gameId) => {
 
         await updatedGame.save();
 
+        // Calcular cartas restantes
+        const redRemaining = updatedGame.board.filter(
+          c => c.type === 'red' && !c.revealed
+        ).length;
+        const blueRemaining = updatedGame.board.filter(
+          c => c.type === 'blue' && !c.revealed
+        ).length;
+
         io.to(`game:${gameId}`).emit('game:turn', {
           currentTurn: updatedGame.currentTurn,
           turnCount: updatedGame.turnCount,
           currentClue: updatedGame.currentClue,
+          redRemaining,
+          blueRemaining,
         });
 
         return;
@@ -480,10 +520,20 @@ const handleBotOperativeGuesses = async (gameId) => {
 
       await game.save();
 
+      // Calcular cartas restantes
+      const redRemaining = game.board.filter(
+        c => c.type === 'red' && !c.revealed
+      ).length;
+      const blueRemaining = game.board.filter(
+        c => c.type === 'blue' && !c.revealed
+      ).length;
+
       io.to(`game:${gameId}`).emit('game:turn', {
         currentTurn: game.currentTurn,
         turnCount: game.turnCount,
         currentClue: game.currentClue,
+        redRemaining,
+        blueRemaining,
       });
     }
   } catch (error) {
@@ -570,11 +620,21 @@ export async function soloTimeout(req, res) {
 
       await game.save();
 
+      // Calcular cartas restantes
+      const redRemaining = game.board.filter(
+        c => c.type === 'red' && !c.revealed
+      ).length;
+      const blueRemaining = game.board.filter(
+        c => c.type === 'blue' && !c.revealed
+      ).length;
+
       // Notifica front da mudança de "round"
       io.to(`game:${gameId}`).emit("game:turn", {
         currentTurn: game.currentTurn,
         turnCount: game.turnCount,
         currentClue: game.currentClue,
+        redRemaining,
+        blueRemaining,
       });
 
       // Envia estado atualizado
@@ -611,12 +671,21 @@ export async function soloTimeout(req, res) {
 
     await game.save();
 
+    // Calcular cartas restantes
+    const redRemaining = game.board.filter(
+      c => c.type === 'red' && !c.revealed
+    ).length;
+    const blueRemaining = game.board.filter(
+      c => c.type === 'blue' && !c.revealed
+    ).length;
 
     // Notifica mudança de turno
     io.to(`game:${gameId}`).emit("game:turn", {
       currentTurn: game.currentTurn,
       turnCount: game.turnCount,
       currentClue: game.currentClue,
+      redRemaining,
+      blueRemaining,
     });
 
     // Envia estado atualizado

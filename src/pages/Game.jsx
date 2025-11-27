@@ -64,7 +64,7 @@ const GamePageContent = () => {
   const canGiveClue = isSpymaster && isMyTurn && !gameState?.currentClue?.word;
   const canMakeGuess = isOperative && isMyTurn && gameState?.currentClue?.word && gameState?.currentClue?.remainingGuesses > 0;
 
-
+  // Usar valores do servidor que já são calculados corretamente para todos os roles
   const redRemaining = gameState?.redRemaining ?? 0;
   const blueRemaining = gameState?.blueRemaining ?? 0;
 
