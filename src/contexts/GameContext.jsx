@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import socket from '../services/socket';
 
@@ -21,7 +21,9 @@ export const GameProvider = ({ children, gameId }) => {
   const [shakingCardIndex, setShakingCardIndex] = useState(null);
   const hasJoinedRef = useRef(false);
 
+  // ------------------------------------------------------------------
   // Conectar ao jogo quando gameId e user estiverem disponíveis
+  // ------------------------------------------------------------------
   useEffect(() => {
     if (!gameId || !user) return;
 
@@ -86,7 +88,11 @@ export const GameProvider = ({ children, gameId }) => {
         ...prev,
         currentTurn: data.currentTurn,
         turnCount: data.turnCount,
-        currentClue: data.currentClue || { word: '', number: 0, remainingGuesses: 0 },
+        currentClue: data.currentClue || {
+          word: '',
+          number: 0,
+          remainingGuesses: 0,
+        },
       }));
     };
 
@@ -118,8 +124,19 @@ export const GameProvider = ({ children, gameId }) => {
     const joinGame = () => {
       if (!hasJoinedRef.current) {
         hasJoinedRef.current = true;
-        socket.emit('game:join', { gameId, userId: user.id || user._id });
-        console.log('Emitindo game:join para', gameId);
+
+        const realUserId =
+          user?._id ||
+          user?.id ||
+          user?.userId ||
+          null;
+
+        console.log("Emitindo game:join", { gameId, realUserId });
+
+        socket.emit('game:join', {
+                    gameId,
+                    userId: realUserId,
+                  });
       }
     };
 
@@ -143,52 +160,165 @@ export const GameProvider = ({ children, gameId }) => {
     };
   }, [gameId, user]);
 
-  // Funções para emitir eventos
-  const sendClue = (clue) => {
+  // ------------------------------------------------------------------
+  // Funções para emitir eventos (solo via REST, multiplayer via socket)
+  // ------------------------------------------------------------------
+
+  const sendClue = useCallback(async (clue) => {
     if (!gameId) return;
+
+    // SOLO MODE → usar REST
+    if (gameState?.mode === 'solo') {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+        await fetch(`${API_URL}/games/solo/${gameId}/clue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            word: clue.word,
+            number: clue.number,
+          }),
+        });
+
+      } catch (err) {
+        console.error("Erro ao enviar dica SOLO:", err);
+      }
+      return;
+    }
+
+    // MULTIPLAYER NORMAL
     socket.emit('game:clue', { gameId, word: clue.word, number: clue.number });
-  };
 
-  const sendGuess = (cardIndex) => {
+  }, [gameId, gameState]);
+
+
+  const sendGuess = useCallback(async (cardIndex) => {
     if (!gameId) return;
+
+    // MODO SOLO
+    if (gameState?.mode === 'solo') {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+        await fetch(`${API_URL}/games/solo/${gameId}/guess`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({ cardIndex }),
+        });
+
+      } catch (err) {
+        console.error("Erro ao enviar palpite SOLO:", err);
+      }
+      return;
+    }
+
+    // MULTIPLAYER
     socket.emit('game:guess', { gameId, cardIndex });
-  };
 
-  const forfeitGame = () => {
+  }, [gameId, gameState]);
+
+
+  const forfeitGame = useCallback(async () => {
     if (!gameId) return;
+
+    // MODO SOLO
+    if (gameState?.mode === 'solo') {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+        await fetch(`${API_URL}/games/solo/${gameId}/end`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+
+      } catch (err) {
+        console.error("Erro ao encerrar SOLO:", err);
+      }
+      return;
+    }
+
+    // MULTIPLAYER
     socket.emit('game:forfeit', { gameId });
-  };
 
-  const sendTimeout = () => {
+  }, [gameId, gameState]);
+
+
+  const sendTimeout = useCallback(async () => {
     if (!gameId) return;
-    socket.emit('game:timeout', { gameId });
-  };
 
+    // SOLO MODE
+    if (gameState?.mode === 'solo') {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+        await fetch(`${API_URL}/games/solo/${gameId}/end`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+
+      } catch (err) {
+        console.error("Erro ao enviar timeout SOLO:", err);
+      }
+      return;
+    }
+
+    // MULTIPLAYER
+    socket.emit('game:timeout', { gameId });
+
+  }, [gameId, gameState]);
+
+
+  // ------------------------------------------------------------------
   // Calcular cartas restantes
-  const getRemainingCards = (team) => {
+  // ------------------------------------------------------------------
+  const getRemainingCards = useCallback((team) => {
     if (!gameState?.board) return 0;
     return gameState.board.filter(
       card => card.type === team && !card.revealed
     ).length;
-  };
+  }, [gameState]);
 
+  // ------------------------------------------------------------------
   // Obter informações do jogador atual
-  const getMyTeam = () => {
+  // ------------------------------------------------------------------
+  const getMyTeam = useCallback(() => {
     if (!gameState?.players || !user) return null;
     const player = gameState.players.find(
-      p => (p.userId === user.id || p.userId === user._id || p.userId?.toString() === (user.id || user._id)?.toString())
+      p =>
+        p.userId === user.id ||
+        p.userId === user._id ||
+        p.userId?.toString() === (user.id || user._id)?.toString()
     );
     return player?.team || null;
-  };
+  }, [gameState, user]);
 
-  const getMyRole = () => {
+  const getMyRole = useCallback(() => {
     if (!gameState?.players || !user) return null;
     const player = gameState.players.find(
-      p => (p.userId === user.id || p.userId === user._id || p.userId?.toString() === (user.id || user._id)?.toString())
+      p =>
+        p.userId === user.id ||
+        p.userId === user._id ||
+        p.userId?.toString() === (user.id || user._id)?.toString()
     );
     return player?.role || null;
-  };
+  }, [gameState, user]);
 
+  // ------------------------------------------------------------------
+  // VALUE DO CONTEXTO
+  // ------------------------------------------------------------------
   const value = {
     gameState,
     isConnected,
@@ -203,6 +333,9 @@ export const GameProvider = ({ children, gameId }) => {
     getMyRole,
   };
 
-  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+  return (
+    <GameContext.Provider value={value}>
+      {children}
+    </GameContext.Provider>
+  );
 };
-

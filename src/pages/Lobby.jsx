@@ -8,6 +8,7 @@ import Avatar from '../components/Avatar';
 import Loader from '../components/Loader';
 import Input from '../components/Input';
 import QueueStatus from '../components/QueueStatus';
+import SoloGameMenu from '../components/SoloGameMenu';
 
 const Lobby = () => {
   const { user } = useAuth();
@@ -17,6 +18,7 @@ const Lobby = () => {
   const [loading, setLoading] = useState(true);
   const [chatMessages, setChatMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
+  const [showSoloMenu, setShowSoloMenu] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -57,10 +59,8 @@ const Lobby = () => {
     }
   };
 
-
   const handlePlayVsBot = () => {
-    // TODO: Implement bot game creation
-    alert('Funcionalidade em desenvolvimento');
+    setShowSoloMenu(true);
   };
 
   const handleSendMessage = e => {
@@ -193,7 +193,7 @@ const Lobby = () => {
                       >
                         <div className="flex items-center gap-4">
                           <div className="text-2xl">
-                            {match.result === 'Vitória' ? '🏆' : '😔'}
+                            {match.result === 'Vitória' ? '🏆' : '😢'}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900 dark:text-white">
@@ -272,6 +272,12 @@ const Lobby = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal de Jogo Solo */}
+      <SoloGameMenu
+        isOpen={showSoloMenu}
+        onClose={() => setShowSoloMenu(false)}
+      />
     </Layout>
   );
 };
