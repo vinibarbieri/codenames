@@ -74,8 +74,19 @@ export const authAPI = {
   },
 };
 
+// User API
+export const userAPI = {
+  updateProfile: async (userId, profileData) => {
+    return apiCall(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+  },
+};
+
 export default {
   authAPI,
+  userAPI,
   setToken,
   getToken,
 };
