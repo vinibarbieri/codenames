@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { userAPI } from '../services/api';
 import Layout from '../components/Layout';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -11,7 +12,7 @@ import Input from '../components/Input';
 
 const Profile = () => {
   const { id } = useParams();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState(null);
@@ -19,6 +20,8 @@ const Profile = () => {
   const [recordings, setRecordings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [editForm, setEditForm] = useState({
     nickname: '',
     city: '',
@@ -130,9 +133,57 @@ const Profile = () => {
 
   const handleEditProfile = async e => {
     e.preventDefault();
-    // TODO: Implement PUT /api/users/:id
-    alert('Funcionalidade de edição em desenvolvimento');
-    setShowEditModal(false);
+    setError(null);
+    setSaving(true);
+
+    try {
+      const profileData = {
+        nickname: editForm.nickname,
+        city: editForm.city,
+        state: editForm.state,
+        country: editForm.country,
+        avatar: editForm.avatar,
+      };
+
+      const response = await userAPI.updateProfile(id, profileData);
+
+      if (response.success && response.data) {
+        // Update local user state
+        const updatedUser = response.data;
+        const newUserState = {
+          ...user,
+          nickname: updatedUser.nickname,
+          avatar: updatedUser.avatar || '',
+          location: updatedUser.location || {
+            city: '',
+            state: '',
+            country: '',
+          },
+        };
+        setUser(newUserState);
+
+        // Update global AuthContext state if editing own profile
+        if (isOwnProfile && updateUser) {
+          updateUser({
+            nickname: updatedUser.nickname,
+            avatar: updatedUser.avatar || '',
+            location: updatedUser.location || {
+              city: '',
+              state: '',
+              country: '',
+            },
+          });
+        }
+
+        // Close modal
+        setShowEditModal(false);
+      }
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar perfil');
+      console.error('Erro ao atualizar perfil:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAvatarUpload = e => {
@@ -387,11 +438,19 @@ const Profile = () => {
       {/* Edit Profile Modal */}
       <Modal
         isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
+        onClose={() => {
+          setShowEditModal(false);
+          setError(null);
+        }}
         title="Editar Perfil"
         size="md"
       >
         <form onSubmit={handleEditProfile} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-error-50 dark:bg-error-900/30 border border-error-200 dark:border-error-800 rounded-lg text-error-700 dark:text-error-300 text-sm">
+              {error}
+            </div>
+          )}
           <div className="text-center mb-4">
             <Avatar
               src={editForm.avatar}
@@ -441,12 +500,16 @@ const Profile = () => {
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setShowEditModal(false)}
+              onClick={() => {
+                setShowEditModal(false);
+                setError(null);
+              }}
+              disabled={saving}
             >
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Salvar Alterações
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar Alterações'}
             </Button>
           </div>
         </form>
