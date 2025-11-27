@@ -12,7 +12,7 @@ import Input from '../components/Input';
 
 const Profile = () => {
   const { id } = useParams();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState(null);
@@ -150,7 +150,7 @@ const Profile = () => {
       if (response.success && response.data) {
         // Update local user state
         const updatedUser = response.data;
-        setUser({
+        const newUserState = {
           ...user,
           nickname: updatedUser.nickname,
           avatar: updatedUser.avatar || '',
@@ -159,7 +159,21 @@ const Profile = () => {
             state: '',
             country: '',
           },
-        });
+        };
+        setUser(newUserState);
+
+        // Update global AuthContext state if editing own profile
+        if (isOwnProfile && updateUser) {
+          updateUser({
+            nickname: updatedUser.nickname,
+            avatar: updatedUser.avatar || '',
+            location: updatedUser.location || {
+              city: '',
+              state: '',
+              country: '',
+            },
+          });
+        }
 
         // Close modal
         setShowEditModal(false);
