@@ -37,7 +37,6 @@ const GamePageContent = () => {
   useEffect(() => {
     if (gameState?.status === 'finished' && !hasShownEndModalRef.current) {
       hasShownEndModalRef.current = true;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowEndModal(true);
     } else if (gameState?.status !== 'finished') {
       hasShownEndModalRef.current = false;
@@ -49,16 +48,17 @@ const GamePageContent = () => {
   const myRole = getMyRole();
   const isSpymaster = myRole === 'spymaster';
   const isOperative = myRole === 'operative';
+
   const canGiveClue = isSpymaster && isMyTurn && !gameState?.currentClue?.word;
   const canMakeGuess = isOperative && isMyTurn && gameState?.currentClue?.word && gameState?.currentClue?.remainingGuesses > 0;
 
   const redRemaining = useMemo(() => {
     return getRemainingCards('red');
-  }, [gameState?.board]);
+  }, [gameState?.board, getRemainingCards]);
 
   const blueRemaining = useMemo(() => {
     return getRemainingCards('blue');
-  }, [gameState?.board]);
+  }, [gameState?.board, getRemainingCards]);
 
   const handleClueSubmit = (clue) => {
     sendClue(clue);
@@ -77,11 +77,12 @@ const GamePageContent = () => {
   };
 
   const handleTimerExpire = () => {
-    // Timer expirado - passar o turno para a equipe adversária
-    console.log('Timer de inatividade expirado - passando turno');
+    // Timer expirado - passar o turno
+    console.log('⏳ Timer de inatividade expirado - passando turno');
     sendTimeout();
   };
 
+  
   // Loading state
   if (!isConnected || !gameState) {
     return (
@@ -110,7 +111,6 @@ const GamePageContent = () => {
     );
   }
 
-
   const isWinner = gameState?.winner === getMyTeam();
   const winnerTeam = gameState?.winner === 'red' ? 'Vermelha' : gameState?.winner === 'blue' ? 'Azul' : '';
 
@@ -136,6 +136,7 @@ const GamePageContent = () => {
               turnCount={gameState.turnCount || 0}
               timerSeconds={60}
               onTimerExpire={handleTimerExpire}
+              mode={gameState.mode}
             />
             <TurnIndicator
               currentTurn={gameState.currentTurn}
@@ -179,7 +180,7 @@ const GamePageContent = () => {
       <Modal
         isOpen={showEndModal}
         onClose={() => setShowEndModal(false)}
-        title={isWinner ? '🎉 Vitória!' : '😔 Derrota'}
+        title={isWinner ? '🎉 Vitória!' : '😢 Derrota'}
         size="md"
         closeOnOverlayClick={false}
       >

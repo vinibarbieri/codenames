@@ -129,31 +129,12 @@ export const GameProvider = ({ children, gameId }) => {
     socket.on('game:error', handleGameError);
 
     // Emitir evento de join (apenas uma vez por gameId)
-    const joinGame = () => {
-      if (!hasJoinedRef.current) {
-        hasJoinedRef.current = true;
-
-        const realUserId =
-          user?._id ||
-          user?.id ||
-          user?.userId ||
-          null;
-
-        console.log("Emitindo game:join", { gameId, realUserId });
-
-        socket.emit('game:join', {
-                    gameId,
-                    userId: realUserId,
-                  });
-      }
-    };
-
-    // Evitar múltiplos game:join
-    if (!hasJoinedRef.current) {
+    // 🔥 JOIN ÚNICO — evita múltiplas conexões duplicadas
+    if (!hasJoinedRef.current && socket.connected) {
       const realUserId = user.id || user._id;
-      socket.emit("game:join", { gameId, userId: realUserId });
-      console.log("Emitindo game:join", { gameId, realUserId });
       hasJoinedRef.current = true;
+      console.log("Emitindo game:join (JOIN ÚNICO)", { gameId, realUserId });
+      socket.emit("game:join", { gameId, userId: realUserId });
     }
 
     // Cleanup
@@ -264,18 +245,18 @@ export const GameProvider = ({ children, gameId }) => {
 
 
   const sendTimeout = useCallback(async () => {
-    if (!gameId) return;
+  if (!gameId) return;
 
-    // SOLO MODE
-    if (gameState?.mode === 'solo') {
+    // SOLO MODE → usar rota correta
+    if (gameState?.mode === "solo") {
       try {
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
 
-        await fetch(`${API_URL}/games/solo/${gameId}/end`, {
-          method: 'PUT',
+        await fetch(`${API_URL}/games/solo/${gameId}/timeout`, {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         });
 
@@ -286,7 +267,7 @@ export const GameProvider = ({ children, gameId }) => {
     }
 
     // MULTIPLAYER
-    socket.emit('game:timeout', { gameId });
+    socket.emit("game:timeout", { gameId });
 
   }, [gameId, gameState]);
 

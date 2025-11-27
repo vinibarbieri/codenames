@@ -4,7 +4,8 @@ import {
   createSoloGame,
   makeSoloGuess,
   giveSoloClue,
-} from '../controllers/soloGameController.js';
+  soloTimeout
+} from "../controllers/soloGameController.js";
 import { getGame, endGame } from '../controllers/gameController.js';
 
 const router = express.Router();
@@ -23,5 +24,7 @@ router.post('/:id/clue', authenticate, giveSoloClue);
 
 // Encerrar jogo
 router.put('/:id/end', authenticate, endGame);
+
+router.post("/:id/timeout", authenticate, soloTimeout);
 
 export default router;

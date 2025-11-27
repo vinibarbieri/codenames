@@ -69,7 +69,10 @@ export const generateBotClue = async (board, team, difficulty = 'medium') => {
     // Estratégia baseada na dificuldade
     let targetCount = 1;
     if (difficulty === 'easy') {
-      targetCount = 1; // Sempre 1 palavra
+
+       return await generateClueWithOpenAI(teamCards, dangerousCards, targetCount, team)
+
+     
     } else if (difficulty === 'medium') {
       targetCount = Math.min(2, teamCards.length); // Até 2 palavras
     } else if (difficulty === 'hard') {
@@ -117,12 +120,7 @@ export const generateBotClue = async (board, team, difficulty = 'medium') => {
 // }`;
 
 //   try {
-//     const completion = await openai.chat.completions.create({
-//       model: "gpt-4",
-//       messages: [{ role: "user", content: prompt }],
-//       temperature: 0.7,
-//       max_tokens: 150,
-//     });
+//     
     
 //     const response = JSON.parse(completion.choices[0].message.content);
 //     console.log('Bot clue reasoning:', response.reasoning);

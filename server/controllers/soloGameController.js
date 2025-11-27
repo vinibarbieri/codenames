@@ -208,7 +208,7 @@ export const makeSoloGuess = async (req, res) => {
       isCorrect: isCorrectGuess,
     });
 
-    // 🔥 NOVO: enviar estado atualizado após cada revelação
+    // enviar estado atualizado após cada revelação
     const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
     for (const socketInGame of socketsInGame) {
       if (socketInGame.userId) {
@@ -538,4 +538,124 @@ const handleBotOperativeTurn = async (gameId) => {
   }
 };
 
-export { handleBotSpymasterTurn, handleBotOperativeTurn };
+export async function soloTimeout(req, res) {
+  try {
+    const { id: gameId } = req.params;
+
+    const game = await Game.findById(gameId);
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    if (game.mode !== "solo") {
+      return res.status(400).json({ message: "Not a solo game" });
+    }
+
+    if (game.status !== 'active') {
+      return res.status(400).json({ message: "Game is not active" });
+    }
+
+    // Extrai info do modo solo
+    const soloMode = game.soloMode || {};
+    const mode = soloMode.type;
+    const playerTeam = soloMode.playerTeam;
+    const botTeam = soloMode.botTeam;
+
+    console.log(`⏰ [TIMEOUT] Modo: ${mode}, Turno atual: ${game.currentTurn}, PlayerTeam: ${playerTeam}`);
+
+    // --------------------------------------------------------------------
+    //  MODO 1: bot-spymaster
+    //  Jogador e bot são do MESMO time.
+    //  Timeout: não passa pro adversário, só faz o bot gerar nova dica.
+    // --------------------------------------------------------------------
+    if (mode === "bot-spymaster") {
+      console.log("⏳ Timeout no modo bot-spymaster → Bot dá nova dica");
+
+      // Zera a dica atual
+      game.currentClue = {
+        word: "",
+        number: 0,
+        remainingGuesses: 0,
+      };
+      
+      // Mantém o turno sempre no time do jogador
+      game.currentTurn = playerTeam;
+      game.turnCount += 1;
+
+      await game.save();
+
+      // Notifica front da mudança de "round"
+      io.to(`game:${gameId}`).emit("game:turn", {
+        currentTurn: game.currentTurn,
+        turnCount: game.turnCount,
+        currentClue: game.currentClue,
+      });
+
+      // Envia estado atualizado
+      const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+      for (const socketInGame of socketsInGame) {
+        if (socketInGame.userId) {
+          const userRole = game.getPlayerRole(socketInGame.userId);
+          socketInGame.emit('game:state', game.toPublicJSON(socketInGame.userId, userRole));
+        }
+      }
+
+      // Bot spymaster gera uma nova dica pro jogador
+      setTimeout(() => handleBotSpymasterTurn(gameId), 1500);
+
+      console.log(`✅ [TIMEOUT] Turno ${game.turnCount} iniciado. Bot gerará nova dica.`);
+      return res.json({ success: true, message: "Timeout processado - Nova dica será gerada" });
+    }
+
+    // --------------------------------------------------------------------
+    //  MODO 2: bot-operative
+    //  Jogador dá dica, bot adivinha. Aqui sim há turnos alternados.
+    // --------------------------------------------------------------------
+    console.log("⏳ Timeout no modo bot-operative → Alternando turno");
+
+    // Zera dica
+    game.currentClue = {
+      word: "",
+      number: 0,
+      remainingGuesses: 0,
+    };
+
+    // Alterna turno
+    const oldTurn = game.currentTurn;
+    game.currentTurn = game.currentTurn === playerTeam ? botTeam : playerTeam;
+    game.turnCount += 1;
+
+    await game.save();
+
+    console.log(`🔄 [TIMEOUT] Turno alterado de ${oldTurn} para ${game.currentTurn} (Turno ${game.turnCount})`);
+
+    // Notifica mudança de turno
+    io.to(`game:${gameId}`).emit("game:turn", {
+      currentTurn: game.currentTurn,
+      turnCount: game.turnCount,
+      currentClue: game.currentClue,
+    });
+
+    // Envia estado atualizado
+    const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
+    for (const socketInGame of socketsInGame) {
+      if (socketInGame.userId) {
+        const userRole = game.getPlayerRole(socketInGame.userId);
+        socketInGame.emit('game:state', game.toPublicJSON(socketInGame.userId, userRole));
+      }
+    }
+
+    // Se virou o turno do bot, ele joga automaticamente
+    if (game.currentTurn === botTeam) {
+      console.log("🤖 Turno do bot - Iniciando jogada automática");
+      setTimeout(() => handleBotOperativeTurn(gameId), 2000);
+    }
+
+    console.log(`✅ [TIMEOUT] Turno ${game.turnCount} iniciado.`);
+    return res.json({ success: true, message: "Timeout processado - Turno alternado" });
+
+  } catch (err) {
+    console.error("❌ [TIMEOUT ERROR]:", err);
+    return res.status(500).json({ message: "Internal error" });
+  }
+}
