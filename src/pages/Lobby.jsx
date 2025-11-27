@@ -17,8 +17,6 @@ const Lobby = () => {
   const [recentMatches, setRecentMatches] = useState([]);
   const [topPlayers, setTopPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [messageInput, setMessageInput] = useState('');
   const [showSoloMenu, setShowSoloMenu] = useState(false);
 
   // Garantir que o socket tenha userId quando conectar
@@ -26,7 +24,7 @@ const Lobby = () => {
     if (socket.connected && user?.id && !socket.userId) {
       socket.userId = user.id || user._id;
     }
-  }, [user, socket.connected]);
+  }, [user]);
 
   useEffect(() => {
     fetchData();

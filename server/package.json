@@ -10,7 +10,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "make-admin": "node scripts/makeAdmin.js"
   },
   "keywords": [
     "codenames",
@@ -33,6 +34,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.20.0",
     "multer": "^2.0.2",
+    "peer": "^1.0.2",
     "socket.io": "^4.8.1",
     "winston": "^3.18.3"
   },

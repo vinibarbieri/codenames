@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -25,11 +25,7 @@ const Ranking = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
-    fetchRanking();
-  }, [filter, debouncedSearch]);
-
-  const fetchRanking = async () => {
+  const fetchRanking = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -64,7 +60,11 @@ const Ranking = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, debouncedSearch, user?.location?.country, user?.location?.state]);
+
+  useEffect(() => {
+    fetchRanking();
+  }, [fetchRanking]);
 
   const getMedalEmoji = position => {
     if (position === 1) return '🥇';

@@ -870,6 +870,85 @@ const initializeSocketIO = io => {
       }
     });
 
+    // ========== VIDEOCHAT EVENTS ==========
+
+    // Event: video:offer - Oferecer videochat para oponente
+    socket.on('video:offer', async data => {
+      try {
+        const { gameId, peerId, targetUserId } = data;
+
+        if (!gameId || !peerId) {
+          socket.emit('video:error', { message: 'gameId e peerId são obrigatórios' });
+          return;
+        }
+
+        // Verificar se o jogo existe
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('video:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Se targetUserId for fornecido, enviar apenas para ele
+        // Caso contrário, enviar para todos os outros jogadores do jogo
+        if (targetUserId) {
+          const targetSocketId = userSockets.get(targetUserId.toString());
+          if (targetSocketId) {
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+              targetSocket.emit('video:offer', {
+                gameId,
+                peerId,
+                fromUserId: socket.userId,
+              });
+              logger.debug(`Video offer enviado de ${socket.userId} para ${targetUserId}`);
+            }
+          }
+        } else {
+          // Enviar para todos os outros jogadores na sala do jogo
+          socket.to(`game:${gameId}`).emit('video:offer', {
+            gameId,
+            peerId,
+            fromUserId: socket.userId,
+          });
+          logger.debug(`Video offer enviado de ${socket.userId} para sala game:${gameId}`);
+        }
+      } catch (error) {
+        logger.error(`Erro no evento video:offer: ${error.message}`);
+        socket.emit('video:error', { message: error.message });
+      }
+    });
+
+    // Event: video:peerId - Compartilhar peerId com oponente
+    socket.on('video:peerId', async data => {
+      try {
+        const { gameId, peerId } = data;
+
+        if (!gameId || !peerId) {
+          socket.emit('video:error', { message: 'gameId e peerId são obrigatórios' });
+          return;
+        }
+
+        // Verificar se o jogo existe
+        const game = await Game.findById(gameId);
+        if (!game) {
+          socket.emit('video:error', { message: 'Jogo não encontrado' });
+          return;
+        }
+
+        // Enviar peerId para todos os outros jogadores na sala do jogo
+        socket.to(`game:${gameId}`).emit('video:peerId', {
+          gameId,
+          peerId,
+          fromUserId: socket.userId,
+        });
+        logger.debug(`PeerId compartilhado de ${socket.userId} para sala game:${gameId}`);
+      } catch (error) {
+        logger.error(`Erro no evento video:peerId: ${error.message}`);
+        socket.emit('video:error', { message: error.message });
+      }
+    });
+
     // Event: disconnect
     socket.on('disconnect', async () => {
       logger.info(`Cliente desconectado: ${socket.id}`);
