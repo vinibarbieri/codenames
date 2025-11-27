@@ -344,6 +344,7 @@ export const getRecentMatches = async (req, res) => {
       return {
         id: game._id.toString(),
         opponent: opponents.length > 0 ? opponents[0].nickname : 'Oponente',
+        opponents: opponents,
         result: isWinner ? 'Vitória' : 'Derrota',
         score,
         date,
