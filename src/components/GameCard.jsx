@@ -30,7 +30,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
   const typeColors = {
     red: 'bg-red-500',
     blue: 'bg-blue-500',
-    neutral: 'bg-gray-400',
+    neutral: 'bg-gray-500',
     assassin: 'bg-black',
     hidden: 'bg-amber-100 dark:bg-amber-900',
   };
@@ -63,7 +63,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
   
   // Para spymasters: cartas não selecionadas = cores vivas (100%), cartas selecionadas = mais ocultas (opacidade reduzida)
   const isRevealedForSpymaster = revealed && showType;
-  const revealedOpacityForSpymaster = isRevealedForSpymaster ? 'opacity-40' : '';
+  const revealedOpacityForSpymaster = isRevealedForSpymaster ? 'opacity-60' : '';
   
 
   return (
@@ -76,7 +76,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
         ${disabled || revealed ? `cursor-not-allowed` : 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95'}
         ${isFlipping ? 'animate-flip' : ''}
         ${isShaking ? 'animate-shake' : ''}
-        flex items-center justify-center p-2 font-semibold text-sm sm:text-base
+        flex items-center justify-center p-2 font-semibold text-sm sm:text-white
       `}
     >
       <span className="text-center break-words">{word}</span>
