@@ -7,7 +7,6 @@ import wordlist from '../data/wordlist.json' assert { type: 'json' };
 
 /**
  * Calcula similaridade semântica entre palavras usando heurística simples
- * Em produção, usar word embeddings (word2vec, GloVe, ou OpenAI embeddings)
  */
 const calculateSimilarity = (word1, word2) => {
   // Heurística simples: palavras com letras em comum têm alguma similaridade
@@ -375,9 +374,9 @@ const generateGuessHeuristic = (availableCards, clue, team, difficulty) => {
   
   // Adicionar ruído baseado na dificuldade
   const noise = {
-    easy: 0.3,   // 30% de chance de erro
+    easy: 0.05,   // 5% de chance de erro
     medium: 0.15, // 15% de chance de erro
-    hard: 0.05,   // 5% de chance de erro
+    hard: 0.30,   // 30% de chance de erro
   }[difficulty] || 0.15;
   
   if (Math.random() < noise) {
