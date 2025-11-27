@@ -110,6 +110,9 @@ app.use('/api/games/solo', soloGameRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/chat', chatRoutes);
 
+// Nota: PeerServer pode ser configurado separadamente se necessário
+// Por padrão, usamos o servidor público do PeerJS (0.peerjs.com)
+
 // Start server
 const startServer = async () => {
   await connectDB();

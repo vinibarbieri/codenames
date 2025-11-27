@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GameProvider, useGame } from '../contexts/GameContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,7 +42,7 @@ const GamePageContent = () => {
     if (socket.connected && user?.id && !socket.userId) {
       socket.userId = user.id || user._id;
     }
-  }, [user, socket.connected]);
+  }, [user]);
 
   // Mostrar modal de fim de jogo quando o jogo terminar
   useEffect(() => {
