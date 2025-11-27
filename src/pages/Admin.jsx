@@ -14,15 +14,12 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
-  const [configs, setConfigs] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [usersPage, setUsersPage] = useState(1);
   const [usersSearch, setUsersSearch] = useState('');
   const [usersPagination, setUsersPagination] = useState({});
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
-  const [editingConfig, setEditingConfig] = useState(null);
-  const [configValue, setConfigValue] = useState('');
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -76,23 +73,6 @@ const Admin = () => {
     }
   }, [API_URL, usersPage, usersSearch]);
 
-  const fetchConfigs = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/admin/config`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setConfigs(data.data);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar configs:', error);
-    }
-  }, [API_URL]);
-
   useEffect(() => {
     // Verificar se é admin
     if (user && user.role !== 'admin') {
@@ -102,9 +82,8 @@ const Admin = () => {
 
     if (user?.role === 'admin') {
       fetchStats();
-      fetchConfigs();
     }
-  }, [user, navigate, fetchStats, fetchConfigs]);
+  }, [user, navigate, fetchStats]);
 
   useEffect(() => {
     if (activeTab === 'users') {
@@ -160,53 +139,6 @@ const Admin = () => {
     }
   };
 
-  const handleEditConfig = config => {
-    setEditingConfig(config);
-    setConfigValue(
-      typeof config.value === 'object' ? JSON.stringify(config.value) : config.value.toString()
-    );
-  };
-
-  const handleSaveConfig = async () => {
-    if (!editingConfig) return;
-
-    try {
-      let value = configValue;
-      // Tentar fazer parse se for JSON
-      try {
-        value = JSON.parse(configValue);
-      } catch {
-        // Se não for JSON, tentar converter para número se possível
-        if (!isNaN(configValue) && configValue !== '') {
-          value = Number(configValue);
-        } else if (configValue === 'true' || configValue === 'false') {
-          value = configValue === 'true';
-        }
-      }
-
-      const response = await fetch(`${API_URL}/admin/config/${editingConfig.key}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({ value }),
-      });
-
-      if (response.ok) {
-        setEditingConfig(null);
-        setConfigValue('');
-        fetchConfigs();
-      } else {
-        const data = await response.json();
-        alert(data.message || 'Erro ao atualizar configuração');
-      }
-    } catch (error) {
-      console.error('Erro ao salvar config:', error);
-      alert('Erro ao salvar configuração');
-    }
-  };
-
   const formatBytes = bytes => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -242,7 +174,7 @@ const Admin = () => {
           {/* Tabs */}
           <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
             <nav className="flex space-x-8">
-              {['dashboard', 'users', 'config'].map(tab => (
+              {['dashboard', 'users'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -254,7 +186,6 @@ const Admin = () => {
                 >
                   {tab === 'dashboard' && 'Dashboard'}
                   {tab === 'users' && 'Usuários'}
-                  {tab === 'config' && 'Configurações'}
                 </button>
               ))}
             </nav>
@@ -356,7 +287,6 @@ const Admin = () => {
                               className="text-sm border rounded px-2 py-1 dark:bg-gray-800 dark:text-white"
                             >
                               <option value="user">User</option>
-                              <option value="moderator">Moderator</option>
                               <option value="admin">Admin</option>
                             </select>
                           </td>
@@ -407,40 +337,6 @@ const Admin = () => {
             </div>
           )}
 
-          {/* Config Tab */}
-          {activeTab === 'config' && (
-            <Card padding="lg">
-              <div className="space-y-4">
-                {configs.map(config => (
-                  <div
-                    key={config._id}
-                    className="flex items-center justify-between p-4 border rounded-lg dark:border-gray-700"
-                  >
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 dark:text-white">
-                        {config.key}
-                      </h4>
-                      {config.description && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {config.description}
-                        </p>
-                      )}
-                      <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                        Valor atual: <code>{JSON.stringify(config.value)}</code>
-                      </p>
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleEditConfig(config)}
-                    >
-                      Editar
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
       </div>
 
@@ -467,40 +363,6 @@ const Admin = () => {
         </div>
       </Modal>
 
-      {/* Edit Config Modal */}
-      <Modal
-        isOpen={!!editingConfig}
-        onClose={() => {
-          setEditingConfig(null);
-          setConfigValue('');
-        }}
-        title={`Editar Config: ${editingConfig?.key}`}
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-              Valor
-            </label>
-            <Input
-              type="text"
-              value={configValue}
-              onChange={e => setConfigValue(e.target.value)}
-              placeholder="Digite o novo valor"
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Use true/false para boolean, números para números, ou JSON para objetos
-            </p>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" onClick={() => setEditingConfig(null)}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleSaveConfig}>
-              Salvar
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </Layout>
   );
 };

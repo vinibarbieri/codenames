@@ -1,10 +1,6 @@
 import express from 'express';
 import { authenticate, isAdmin } from '../middleware/auth.js';
 import {
-  getAllConfigs,
-  getConfig,
-  updateConfig,
-  getPublicConfigs,
   getStats,
   getUsers,
   deleteUser,
@@ -29,12 +25,6 @@ router.get('/stats', authenticate, isAdmin, getStats);
 router.get('/users', authenticate, isAdmin, getUsers);
 router.delete('/users/:id', authenticate, isAdmin, deleteUser);
 router.put('/users/:id/role', authenticate, isAdmin, updateUserRole);
-router.get('/config', authenticate, isAdmin, getAllConfigs);
-router.get('/config/:key', authenticate, isAdmin, getConfig);
-router.put('/config/:key', authenticate, isAdmin, updateConfig);
-
-// Rota pública para configs não sensíveis
-router.get('/config/public', getPublicConfigs);
 
 export default router;
 

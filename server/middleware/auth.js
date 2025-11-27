@@ -105,8 +105,8 @@ export const isAdmin = async (req, res, next) => {
   }
 };
 
-// @desc    Check if user is moderator or admin
-// @access  Moderator/Admin only
+// @desc    Check if user is admin
+// @access  Admin only
 export const isModerator = async (req, res, next) => {
   try {
     // This middleware should run after authenticate middleware
@@ -127,7 +127,7 @@ export const isModerator = async (req, res, next) => {
       });
     }
 
-    if (user.role !== 'admin' && user.role !== 'moderator') {
+    if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Moderator privileges required.',
