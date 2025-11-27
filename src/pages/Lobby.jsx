@@ -197,7 +197,7 @@ const Lobby = () => {
                           <div>
                             <div className="font-semibold text-gray-900 dark:text-white">
                               {match.isBotGame
-                                ? 'com bot'
+                                ? 'Bot'
                                 : `vs ${match.opponents && match.opponents.length > 0
                                   ? match.opponents.length === 2
                                     ? `${match.opponents[0].nickname} & ${match.opponents[1].nickname}`
