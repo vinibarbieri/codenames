@@ -28,7 +28,6 @@ const GamePageContent = () => {
     sendGuess,
     forfeitGame,
     sendTimeout,
-    getRemainingCards,
     getMyTeam,
     getMyRole,
   } = useGame();
