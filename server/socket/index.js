@@ -436,11 +436,21 @@ const initializeSocketIO = io => {
           await updatedGame.save();
         }
 
+        // Calcular cartas restantes
+        const redRemaining = updatedGame.board.filter(
+          c => c.type === 'red' && !c.revealed
+        ).length;
+        const blueRemaining = updatedGame.board.filter(
+          c => c.type === 'blue' && !c.revealed
+        ).length;
+
         // Broadcast revelação para todos no jogo
         io.to(`game:${gameId}`).emit('game:reveal', {
           cardIndex,
           cardType: card.type,
           isCorrect: isCorrectGuess,
+          redRemaining,
+          blueRemaining,
         });
 
         // Se o jogo terminou, emitir evento de fim de jogo e estado atualizado
@@ -471,11 +481,21 @@ const initializeSocketIO = io => {
           });
           logger.info(`Jogo ${gameId} finalizado. Vencedor: ${finalGame.winner}, Razão: ${card.type === 'assassin' ? 'assassin' : 'victory'}`);
         } else if (!isCorrectGuess || updatedGame.currentClue.remainingGuesses === 0) {
+          // Calcular cartas restantes
+          const redRemaining = updatedGame.board.filter(
+            c => c.type === 'red' && !c.revealed
+          ).length;
+          const blueRemaining = updatedGame.board.filter(
+            c => c.type === 'blue' && !c.revealed
+          ).length;
+
           // Se mudou turno, broadcast turno
           io.to(`game:${gameId}`).emit('game:turn', {
             currentTurn: updatedGame.currentTurn,
             turnCount: updatedGame.turnCount,
             currentClue: updatedGame.currentClue,
+            redRemaining,
+            blueRemaining,
           });
         }
 
@@ -597,11 +617,21 @@ const initializeSocketIO = io => {
           updatedGame.turnCount += 1;
           await updatedGame.save();
 
+          // Calcular cartas restantes
+          const redRemaining = updatedGame.board.filter(
+            c => c.type === 'red' && !c.revealed
+          ).length;
+          const blueRemaining = updatedGame.board.filter(
+            c => c.type === 'blue' && !c.revealed
+          ).length;
+
           // Broadcast mudança de turno
           io.to(`game:${gameId}`).emit('game:turn', {
             currentTurn: updatedGame.currentTurn,
             turnCount: updatedGame.turnCount,
             currentClue: updatedGame.currentClue,
+            redRemaining,
+            blueRemaining,
           });
 
           logger.info(`Timer expirado no jogo ${gameId}. Turno passado para ${updatedGame.currentTurn}`);

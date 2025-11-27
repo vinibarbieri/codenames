@@ -91,6 +91,9 @@ export const GameProvider = ({ children, gameId }) => {
         return {
           ...prev,
           board: newBoard,
+          // Atualizar pontuações se vierem do servidor
+          redRemaining: data.redRemaining !== undefined ? data.redRemaining : prev.redRemaining,
+          blueRemaining: data.blueRemaining !== undefined ? data.blueRemaining : prev.blueRemaining,
         };
       });
 
@@ -112,6 +115,9 @@ export const GameProvider = ({ children, gameId }) => {
           number: 0,
           remainingGuesses: 0,
         },
+        // Atualizar pontuações se vierem do servidor
+        redRemaining: data.redRemaining !== undefined ? data.redRemaining : prev.redRemaining,
+        blueRemaining: data.blueRemaining !== undefined ? data.blueRemaining : prev.blueRemaining,
       }));
     };
 
