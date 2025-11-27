@@ -111,7 +111,7 @@ const SoloGameMenu = ({ isOpen, onClose }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="🎮 Jogar contra Bot"
+      title="🎮 Jogar com Bot"
       size="lg"
     >
       <div className="space-y-6">

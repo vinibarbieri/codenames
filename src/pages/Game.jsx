@@ -37,6 +37,7 @@ const GamePageContent = () => {
   useEffect(() => {
     if (gameState?.status === 'finished' && !hasShownEndModalRef.current) {
       hasShownEndModalRef.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowEndModal(true);
     } else if (gameState?.status !== 'finished') {
       hasShownEndModalRef.current = false;

@@ -36,9 +36,8 @@ const ScoreBoard = ({
   useEffect(() => {
 
 
-    // Para SOLO, o timer visual até pode existir, mas não deve disparar onTimerExpire.
-    // Então só controlamos/resetamos timer quando NÃO for solo.
-    if (mode !== "solo") return;
+    // Para SOLO, não resetamos nem controlamos timeout (somente visual).
+    if (mode === "solo") return;
 
     if (prevTurnCountRef.current !== turnCount && turnCount !== undefined) {
       prevTurnCountRef.current = turnCount;
@@ -51,7 +50,7 @@ const ScoreBoard = ({
   // Countdown do timer
   useEffect(() => {
 
-    if (mode !== "solo") return;
+    if (mode === "solo") return;
 
     if (timeLeft <= 0 && !hasExpiredRef.current) {
       hasExpiredRef.current = true;
