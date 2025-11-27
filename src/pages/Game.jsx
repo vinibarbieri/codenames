@@ -10,7 +10,9 @@ import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Loader from '../components/Loader';
 import ChatBox from '../components/ChatBox';
+import VideoChat from '../components/VideoChat';
 import socket from '../services/socket';
+import peerService from '../services/peerService';
 
 /**
  * GamePage - Componente interno que usa o contexto do jogo
@@ -35,6 +37,8 @@ const GamePageContent = () => {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isVideoChatOpen, setIsVideoChatOpen] = useState(false);
+  const [remotePeerId, setRemotePeerId] = useState(null);
   const hasShownEndModalRef = useRef(false);
 
   // Garantir que o socket tenha userId quando conectar
@@ -43,6 +47,66 @@ const GamePageContent = () => {
       socket.userId = user.id || user._id;
     }
   }, [user]);
+
+  // Inicializar Peer e compartilhar peerId quando entrar no jogo
+  useEffect(() => {
+    if (!gameId || !user?.id) return;
+    if (!socket.connected) return;
+
+    const initializePeer = async () => {
+      try {
+        const peerId = await peerService.initialize(user.id || user._id);
+        
+        // Compartilhar peerId com outros jogadores
+        socket.emit('video:peerId', {
+          gameId,
+          peerId,
+        });
+      } catch (error) {
+        console.error('[Game] Erro ao inicializar Peer:', error);
+      }
+    };
+
+    initializePeer();
+
+    // Cleanup ao sair
+    return () => {
+      peerService.destroy();
+    };
+  }, [gameId, user?.id, user?._id]);
+
+  // Escutar eventos de videochat
+  useEffect(() => {
+    if (!gameId) return;
+    if (!socket.connected) return;
+
+    const handleVideoOffer = data => {
+      console.log('[Game] Video offer recebido:', data);
+      if (data.peerId && data.fromUserId !== user?.id) {
+        setRemotePeerId(data.peerId);
+        setIsVideoChatOpen(true);
+      }
+    };
+
+    const handleVideoPeerId = data => {
+      console.log('[Game] PeerId recebido:', data);
+      if (data.peerId && data.fromUserId !== user?.id) {
+        setRemotePeerId(data.peerId);
+        // Se o videochat estiver aberto, conectar automaticamente
+        if (isVideoChatOpen) {
+          // O VideoChat já vai conectar quando receber o remotePeerId
+        }
+      }
+    };
+
+    socket.on('video:offer', handleVideoOffer);
+    socket.on('video:peerId', handleVideoPeerId);
+
+    return () => {
+      socket.off('video:offer', handleVideoOffer);
+      socket.off('video:peerId', handleVideoPeerId);
+    };
+  }, [gameId, user?.id, isVideoChatOpen]);
 
   // Mostrar modal de fim de jogo quando o jogo terminar
   useEffect(() => {
@@ -191,6 +255,30 @@ const GamePageContent = () => {
                 isOpen={isChatOpen}
                 onToggle={() => setIsChatOpen(!isChatOpen)}
               />
+            </div>
+
+            {/* Videochat */}
+            <div className="mt-4">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-semibold text-secondary-900 dark:text-white">
+                  Videochat
+                </h3>
+                <Button
+                  variant={isVideoChatOpen ? 'danger' : 'primary'}
+                  size="sm"
+                  onClick={() => setIsVideoChatOpen(!isVideoChatOpen)}
+                >
+                  {isVideoChatOpen ? 'Fechar' : 'Abrir'} Videochat
+                </Button>
+              </div>
+              {isVideoChatOpen && (
+                <VideoChat
+                  userId={user?.id || user?._id}
+                  remotePeerId={remotePeerId}
+                  isVisible={isVideoChatOpen}
+                  onClose={() => setIsVideoChatOpen(false)}
+                />
+              )}
             </div>
           </div>
         </div>
