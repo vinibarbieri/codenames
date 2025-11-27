@@ -167,31 +167,23 @@ gameSchema.methods.toPublicJSON = function (userId, userRole) {
     publicData.soloMode = this.soloMode;
   }
 
-  // Board visibility rules
-  if (this.mode === "solo") {
-    // SOLO MODE: sempre mostrar os tipos REAIS (necessário para o bot + contagem)
-    publicData.board = this.board.map(card => ({
-      word: card.word,
-      type: card.type,
-      revealed: card.revealed,
-    }));
-  }
-  else if (userRole === "spymaster" || this.status === "finished") {
-    // Spymaster vê tudo
-    publicData.board = this.board.map(card => ({
-      word: card.word,
-      type: card.type,
-      revealed: card.revealed,
-    }));
-  } 
-  else {
-    // Operatives não veem tipos ocultos
-    publicData.board = this.board.map(card => ({
+  const shouldRevealTypes = userRole === "spymaster" || this.status === "finished";
+
+  publicData.board = this.board.map(card => {
+    if (shouldRevealTypes || card.revealed) {
+      return {
+        word: card.word,
+        type: card.type,
+        revealed: card.revealed,
+      };
+    }
+
+    return {
       word: card.word,
       revealed: card.revealed,
-      type: card.revealed ? card.type : null,
-    }));
-  }
+      type: null,
+    };
+  });
 
   
   publicData.redRemaining = this.board.filter(

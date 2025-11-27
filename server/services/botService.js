@@ -69,10 +69,8 @@ export const generateBotClue = async (board, team, difficulty = 'medium') => {
     // Estratégia baseada na dificuldade
     let targetCount = 1;
     if (difficulty === 'easy') {
-
-       return await generateClueWithOpenAI(teamCards, dangerousCards, targetCount, team)
-
-     
+      // Easy mode stays conservative with single-word clues
+      targetCount = 1;
     } else if (difficulty === 'medium') {
       targetCount = Math.min(2, teamCards.length); // Até 2 palavras
     } else if (difficulty === 'hard') {

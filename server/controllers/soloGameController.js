@@ -21,7 +21,6 @@ const createSoloGameSchema = Joi.object({
 export const createSoloGame = async (req, res) => {
   try {
 
-    console.log("Aqui1");
     const { error, value } = createSoloGameSchema.validate(req.body);
     if (error) {
       return res.status(400).json({
@@ -108,11 +107,8 @@ export const createSoloGame = async (req, res) => {
     },
   ];
 }
-    console.log("Aqui2");
     // Criar jogo
     const game = await initializeGame(players, 'solo');
-
-    console.log("TURN INICIAL:", game.currentTurn, "PLAYER TEAM:", team);
 
     game.currentTurn = team;
 
@@ -124,8 +120,6 @@ export const createSoloGame = async (req, res) => {
     };
 
     await game.save();
-
-    console.log("TURN INICIAL (após ajustar):", game.currentTurn, "PLAYER TEAM:", team);
 
     // Se o bot for spymaster, ele dá a primeira dica automaticamente
     // para o time do jogador (mesmo time do turno atual)
@@ -285,7 +279,6 @@ export const giveSoloClue = async (req, res) => {
     const { id: gameId } = req.params;
     const { word, number } = req.body;
     const userId = req.user.userId;
-    console.log('[giveSoloClue] dica recebida', gameId, word, number);
 
     const game = await Game.findById(gameId);
     if (!game || game.mode !== 'solo') {
@@ -384,7 +377,6 @@ const handleBotSpymasterTurn = async (gameId) => {
       }
     }
 
-    console.log(`Bot deu dica: ${clue.word} ${clue.number}`);
   } catch (error) {
     console.error('Bot spymaster turn error:', error);
   }
@@ -405,7 +397,6 @@ const handleBotOperativeGuesses = async (gameId) => {
       ? game.soloMode.playerTeam
       : game.soloMode.botTeam;
 
-    console.log('[bot guess] tentando adivinhar...', game.currentClue, guessTeam);
 
     // Enquanto ainda houver palpites e o jogo estiver ativo
     while (game.currentClue.remainingGuesses > 0 && game.status === 'active') {
@@ -427,10 +418,8 @@ const handleBotOperativeGuesses = async (gameId) => {
         difficulty
       );
 
-      console.log('Retorno do bot guess: ', guessIndex);
 
       const card = game.board[guessIndex];
-      console.log('Bot escolheu carta:', card);
 
       // Se carta inválida ou já revelada, tenta de novo
       if (!card || card.revealed) continue;
@@ -508,7 +497,6 @@ const handleBotOperativeGuesses = async (gameId) => {
 const handleBotOperativeTurn = async (gameId) => {
   try {
 
-    console.log("Entrou no handleBotOp")
     const game = await Game.findById(gameId);
     if (!game || game.status !== 'active') return;
 
@@ -527,7 +515,7 @@ const handleBotOperativeTurn = async (gameId) => {
 
     await game.save();
 
-    io.to(`game:${gameId}`)('game:clue', {
+    io.to(`game:${gameId}`).emit('game:clue', {
       clue: game.currentClue,
     });
 
@@ -561,7 +549,6 @@ export async function soloTimeout(req, res) {
     const playerTeam = soloMode.playerTeam;
     const botTeam = soloMode.botTeam;
 
-    console.log(`⏰ [TIMEOUT] Modo: ${mode}, Turno atual: ${game.currentTurn}, PlayerTeam: ${playerTeam}`);
 
     // --------------------------------------------------------------------
     //  MODO 1: bot-spymaster
@@ -569,7 +556,6 @@ export async function soloTimeout(req, res) {
     //  Timeout: não passa pro adversário, só faz o bot gerar nova dica.
     // --------------------------------------------------------------------
     if (mode === "bot-spymaster") {
-      console.log("⏳ Timeout no modo bot-spymaster → Bot dá nova dica");
 
       // Zera a dica atual
       game.currentClue = {
@@ -603,7 +589,6 @@ export async function soloTimeout(req, res) {
       // Bot spymaster gera uma nova dica pro jogador
       setTimeout(() => handleBotSpymasterTurn(gameId), 1500);
 
-      console.log(`✅ [TIMEOUT] Turno ${game.turnCount} iniciado. Bot gerará nova dica.`);
       return res.json({ success: true, message: "Timeout processado - Nova dica será gerada" });
     }
 
@@ -611,7 +596,6 @@ export async function soloTimeout(req, res) {
     //  MODO 2: bot-operative
     //  Jogador dá dica, bot adivinha. Aqui sim há turnos alternados.
     // --------------------------------------------------------------------
-    console.log("⏳ Timeout no modo bot-operative → Alternando turno");
 
     // Zera dica
     game.currentClue = {
@@ -627,7 +611,6 @@ export async function soloTimeout(req, res) {
 
     await game.save();
 
-    console.log(`🔄 [TIMEOUT] Turno alterado de ${oldTurn} para ${game.currentTurn} (Turno ${game.turnCount})`);
 
     // Notifica mudança de turno
     io.to(`game:${gameId}`).emit("game:turn", {
@@ -647,11 +630,9 @@ export async function soloTimeout(req, res) {
 
     // Se virou o turno do bot, ele joga automaticamente
     if (game.currentTurn === botTeam) {
-      console.log("🤖 Turno do bot - Iniciando jogada automática");
       setTimeout(() => handleBotOperativeTurn(gameId), 2000);
     }
 
-    console.log(`✅ [TIMEOUT] Turno ${game.turnCount} iniciado.`);
     return res.json({ success: true, message: "Timeout processado - Turno alternado" });
 
   } catch (err) {
