@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GameProvider, useGame } from '../contexts/GameContext';
+import { useAuth } from '../contexts/AuthContext';
 import GameBoard from '../components/GameBoard';
 import ClueInput from '../components/ClueInput';
 import TurnIndicator from '../components/TurnIndicator';
@@ -8,6 +9,8 @@ import ScoreBoard from '../components/ScoreBoard';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Loader from '../components/Loader';
+import ChatBox from '../components/ChatBox';
+import socket from '../services/socket';
 
 /**
  * GamePage - Componente interno que usa o contexto do jogo
@@ -15,6 +18,7 @@ import Loader from '../components/Loader';
 const GamePageContent = () => {
   const { id: gameId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const {
     gameState,
     isConnected,
@@ -31,7 +35,15 @@ const GamePageContent = () => {
 
   const [showEndModal, setShowEndModal] = useState(false);
   const [showForfeitModal, setShowForfeitModal] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const hasShownEndModalRef = useRef(false);
+
+  // Garantir que o socket tenha userId quando conectar
+  useEffect(() => {
+    if (socket.connected && user?.id && !socket.userId) {
+      socket.userId = user.id || user._id;
+    }
+  }, [user, socket.connected]);
 
   // Mostrar modal de fim de jogo quando o jogo terminar
   useEffect(() => {
@@ -160,8 +172,8 @@ const GamePageContent = () => {
             />
           </div>
 
-          {/* Sidebar - Clue Input */}
-          <div className="lg:col-span-1">
+          {/* Sidebar - Clue Input e Chat */}
+          <div className="lg:col-span-1 space-y-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
               <h2 className="text-lg font-semibold mb-4 text-secondary-900 dark:text-white">
                 {isSpymaster ? 'Sua Dica' : 'Aguardando Dica'}
@@ -171,6 +183,18 @@ const GamePageContent = () => {
                 disabled={!canGiveClue}
                 currentClue={gameState.currentClue?.word || ''}
                 remainingGuesses={gameState.currentClue?.remainingGuesses || 0}
+              />
+            </div>
+
+            {/* Chat do Jogo */}
+            <div className="h-[400px]">
+              <ChatBox
+                type="game"
+                gameId={gameId}
+                user={user}
+                socket={socket}
+                isOpen={isChatOpen}
+                onToggle={() => setIsChatOpen(!isChatOpen)}
               />
             </div>
           </div>
