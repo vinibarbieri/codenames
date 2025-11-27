@@ -16,7 +16,7 @@ export const useGame = () => {
 export const GameProvider = ({ children, gameId }) => {
   const { user } = useAuth();
   const [gameState, setGameState] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(socket.connected);
   const [error, setError] = useState(null);
   const [shakingCardIndex, setShakingCardIndex] = useState(null);
   const hasJoinedRef = useRef(false);
@@ -24,6 +24,16 @@ export const GameProvider = ({ children, gameId }) => {
   // ------------------------------------------------------------------
   // Conectar ao jogo quando gameId e user estiverem disponíveis
   // ------------------------------------------------------------------
+  const attemptJoin = useCallback(() => {
+    if (hasJoinedRef.current) return;
+    if (!socket.connected || !user || !gameId) return;
+
+    const realUserId = user.id || user._id;
+    hasJoinedRef.current = true;
+    console.log("Emitindo game:join (JOIN ÚNICO)", { gameId, realUserId });
+    socket.emit("game:join", { gameId, userId: realUserId });
+  }, [gameId, user]);
+
   useEffect(() => {
     if (!gameId || !user) return;
 
@@ -32,13 +42,14 @@ export const GameProvider = ({ children, gameId }) => {
 
     // Verificar se já está conectado (caso venha da fila)
     if (socket.connected) {
-      setIsConnected(true);
       console.log('Socket já conectado ao jogo');
+      attemptJoin();
     }
 
     const handleConnect = () => {
       setIsConnected(true);
       console.log('Socket conectado ao jogo');
+      attemptJoin();
     };
 
     const handleDisconnect = () => {
@@ -129,13 +140,7 @@ export const GameProvider = ({ children, gameId }) => {
     socket.on('game:error', handleGameError);
 
     // Emitir evento de join (apenas uma vez por gameId)
-    // 🔥 JOIN ÚNICO — evita múltiplas conexões duplicadas
-    if (!hasJoinedRef.current && socket.connected) {
-      const realUserId = user.id || user._id;
-      hasJoinedRef.current = true;
-      console.log("Emitindo game:join (JOIN ÚNICO)", { gameId, realUserId });
-      socket.emit("game:join", { gameId, userId: realUserId });
-    }
+    attemptJoin();
 
     // Cleanup
     return () => {
@@ -149,7 +154,7 @@ export const GameProvider = ({ children, gameId }) => {
       socket.off('game:end', handleGameEnd);
       socket.off('game:error', handleGameError);
     };
-  }, [gameId, user]);
+  }, [gameId, user, attemptJoin]);
 
   // ------------------------------------------------------------------
   // Funções para emitir eventos (solo via REST, multiplayer via socket)

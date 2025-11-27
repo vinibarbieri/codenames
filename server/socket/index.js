@@ -1,7 +1,10 @@
 import winston from 'winston';
+import DOMPurify from 'isomorphic-dompurify';
 import QueueService from '../services/QueueService.js';
-import { initializeGame, checkGameResult } from '../services/gameService.js';
+import { initializeGame, checkGameResult, updatePlayerScores } from '../services/gameService.js';
 import Game from '../models/Game.js';
+import ChatMessage from '../models/ChatMessage.js';
+import User from '../models/User.js';
 
 // Configurar logger Winston
 const logger = winston.createLogger({
@@ -17,6 +20,11 @@ const logger = winston.createLogger({
 
 // Mapa para rastrear sockets por userId
 const userSockets = new Map();
+
+// Mapa para rate limiting de mensagens: userId -> [{timestamp}]
+const messageRateLimit = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minuto
+const RATE_LIMIT_MAX = 10; // 10 mensagens por minuto
 
 /**
  * Emite atualização da fila para todos os clientes conectados
@@ -129,7 +137,17 @@ const createMatch = async (io, playersArray) => {
 const initializeSocketIO = io => {
   // Namespace padrão '/'
   io.on('connection', socket => {
-    logger.info(`Cliente conectado: ${socket.id}`);
+    logger.info(`Cliente conectado: ${socket.id}${socket.userId ? ` (userId: ${socket.userId})` : ' (não autenticado)'}`);
+    
+    // Se o socket tem userId (autenticado), armazenar mapeamento
+    if (socket.userId) {
+      userSockets.set(socket.userId, socket.id);
+      logger.debug(`Socket ${socket.id} autenticado como userId ${socket.userId}`);
+    }
+    
+    // Entrar automaticamente na room 'general' ao conectar
+    socket.join('general');
+    logger.debug(`Socket ${socket.id} entrou na room 'general'`);
 
     // Event: queue:join
     socket.on('queue:join', async data => {
@@ -265,6 +283,9 @@ const initializeSocketIO = io => {
         socket.emit('game:state', gameState);
 
         // Adicionar socket à sala do jogo (para broadcast posterior)
+        socket.join(`game:${gameId}`);
+        
+        // Entrar também na room de chat do jogo
         socket.join(`game:${gameId}`);
 
         logger.info(`Usuário ${userId} entrou no jogo ${gameId} como ${userRole}`);
@@ -427,6 +448,14 @@ const initializeSocketIO = io => {
           // Recarregar o jogo do banco para garantir que todas as mudanças foram aplicadas
           const finalGame = await Game.findById(gameId);
           
+          // Atualizar pontuação dos jogadores
+          try {
+            await updatePlayerScores(finalGame);
+            logger.info(`Pontuações atualizadas para o jogo ${gameId}`);
+          } catch (error) {
+            logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+          }
+          
           // Enviar estado completo do jogo para todos os jogadores
           const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
           for (const socketInGame of socketsInGame) {
@@ -497,9 +526,18 @@ const initializeSocketIO = io => {
 
         await game.save();
 
+        // Atualizar pontuação dos jogadores
+        try {
+          await updatePlayerScores(game);
+          logger.info(`Pontuações atualizadas para o jogo ${gameId} (desistência)`);
+        } catch (error) {
+          logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+        }
+
         // Broadcast fim de jogo
         io.to(`game:${gameId}`).emit('game:end', {
           winner,
+          reason: 'forfeit',
         });
 
         logger.info(`Jogo ${gameId} finalizado por desistência. Vencedor: ${winner}`);
@@ -568,7 +606,14 @@ const initializeSocketIO = io => {
 
           logger.info(`Timer expirado no jogo ${gameId}. Turno passado para ${updatedGame.currentTurn}`);
         } else {
-          // Se o jogo terminou, apenas enviar o estado atualizado
+          // Se o jogo terminou, atualizar pontuações e enviar estado atualizado
+          try {
+            await updatePlayerScores(updatedGame);
+            logger.info(`Pontuações atualizadas para o jogo ${gameId} (timeout)`);
+          } catch (error) {
+            logger.error(`Erro ao atualizar pontuações do jogo ${gameId}: ${error.message}`);
+          }
+          
           const socketsInGame = await io.in(`game:${gameId}`).fetchSockets();
           for (const socketInGame of socketsInGame) {
             if (socketInGame.userId) {
@@ -576,7 +621,7 @@ const initializeSocketIO = io => {
               socketInGame.emit('game:state', updatedGame.toPublicJSON(socketInGame.userId, userRole));
             }
           }
-
+          
           io.to(`game:${gameId}`).emit('game:end', {
             winner: updatedGame.winner,
             reason: 'timeout',
@@ -585,6 +630,213 @@ const initializeSocketIO = io => {
       } catch (error) {
         logger.error(`Erro no evento game:timeout: ${error.message}`);
         socket.emit('game:error', { message: error.message });
+      }
+    });
+
+    // ========== CHAT EVENTS ==========
+
+    // Event: chat:message
+    socket.on('chat:message', async data => {
+      try {
+        const { type, message, gameId } = data;
+        const userId = socket.userId;
+
+        if (!userId) {
+          socket.emit('chat:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        if (!message || !type) {
+          socket.emit('chat:error', { message: 'message e type são obrigatórios' });
+          return;
+        }
+
+        // Validar tipo
+        if (type !== 'general' && type !== 'game') {
+          socket.emit('chat:error', { message: 'type deve ser "general" ou "game"' });
+          return;
+        }
+
+        // Validar tamanho da mensagem
+        if (message.length > 500) {
+          socket.emit('chat:error', { message: 'Mensagem deve ter no máximo 500 caracteres' });
+          return;
+        }
+
+        // Rate limiting: verificar se usuário excedeu limite
+        const now = Date.now();
+        const userMessages = messageRateLimit.get(userId) || [];
+        
+        // Remover mensagens antigas (fora da janela de tempo)
+        const recentMessages = userMessages.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+        
+        if (recentMessages.length >= RATE_LIMIT_MAX) {
+          socket.emit('chat:error', { 
+            message: `Limite de mensagens excedido. Máximo de ${RATE_LIMIT_MAX} mensagens por minuto.` 
+          });
+          return;
+        }
+
+        // Adicionar timestamp atual
+        recentMessages.push(now);
+        messageRateLimit.set(userId, recentMessages);
+
+        // Sanitizar mensagem com DOMPurify
+        const sanitizedMessage = DOMPurify.sanitize(message, {
+          ALLOWED_TAGS: [], // Não permitir tags HTML
+          ALLOWED_ATTR: [],
+        }).trim();
+
+        // Validar se a mensagem não está vazia após sanitização
+        // (DOMPurify pode remover todo o conteúdo se for apenas HTML/scripts)
+        if (!sanitizedMessage || sanitizedMessage.length === 0) {
+          socket.emit('chat:error', { 
+            message: 'Mensagem inválida. Tags HTML e scripts não são permitidos.' 
+          });
+          return;
+        }
+
+        // Validar gameId se type for 'game'
+        let finalGameId = null;
+        if (type === 'game') {
+          if (!gameId) {
+            socket.emit('chat:error', { message: 'gameId é obrigatório para mensagens de jogo' });
+            return;
+          }
+
+          // Verificar se jogo existe e usuário é participante
+          const game = await Game.findById(gameId);
+          if (!game) {
+            socket.emit('chat:error', { message: 'Jogo não encontrado' });
+            return;
+          }
+
+          if (!game.hasPlayer(userId)) {
+            socket.emit('chat:error', { message: 'Você não é participante deste jogo' });
+            return;
+          }
+
+          finalGameId = gameId;
+        }
+
+        // Buscar informações do usuário
+        const user = await User.findById(userId).select('nickname avatar');
+        if (!user) {
+          socket.emit('chat:error', { message: 'Usuário não encontrado' });
+          return;
+        }
+
+        // Salvar mensagem no banco
+        const chatMessage = new ChatMessage({
+          userId,
+          gameId: finalGameId,
+          type,
+          message: sanitizedMessage,
+        });
+
+        await chatMessage.save();
+
+        // Popular dados do usuário
+        await chatMessage.populate('userId', 'nickname avatar');
+
+        // Preparar mensagem para broadcast
+        const messageData = {
+          _id: chatMessage._id,
+          userId: chatMessage.userId._id,
+          nickname: user.nickname,
+          avatar: user.avatar || '',
+          message: sanitizedMessage,
+          type,
+          gameId: finalGameId,
+          createdAt: chatMessage.createdAt,
+        };
+
+        // Emitir para a room correta
+        if (type === 'game') {
+          io.to(`game:${gameId}`).emit('chat:new_message', messageData);
+          logger.debug(`Mensagem de jogo enviada por ${userId} no jogo ${gameId}`);
+        } else {
+          io.to('general').emit('chat:new_message', messageData);
+          logger.debug(`Mensagem geral enviada por ${userId}`);
+        }
+
+        // Confirmar envio
+        socket.emit('chat:message_sent', { messageId: chatMessage._id });
+      } catch (error) {
+        logger.error(`Erro no evento chat:message: ${error.message}`);
+        socket.emit('chat:error', { message: error.message });
+      }
+    });
+
+    // Event: chat:history
+    socket.on('chat:history', async data => {
+      try {
+        const { type, gameId, limit = 50 } = data;
+        const userId = socket.userId;
+
+        if (!userId) {
+          socket.emit('chat:error', { message: 'Usuário não autenticado' });
+          return;
+        }
+
+        if (!type) {
+          socket.emit('chat:error', { message: 'type é obrigatório' });
+          return;
+        }
+
+        // Validar tipo
+        if (type !== 'general' && type !== 'game') {
+          socket.emit('chat:error', { message: 'type deve ser "general" ou "game"' });
+          return;
+        }
+
+        // Se for mensagem de jogo, validar gameId e participação
+        if (type === 'game') {
+          if (!gameId) {
+            socket.emit('chat:error', { message: 'gameId é obrigatório para histórico de jogo' });
+            return;
+          }
+
+          const game = await Game.findById(gameId);
+          if (!game) {
+            socket.emit('chat:error', { message: 'Jogo não encontrado' });
+            return;
+          }
+
+          if (!game.hasPlayer(userId)) {
+            socket.emit('chat:error', { message: 'Você não é participante deste jogo' });
+            return;
+          }
+        }
+
+        // Buscar mensagens
+        const query = { type };
+        if (type === 'game' && gameId) {
+          query.gameId = gameId;
+        }
+
+        const messages = await ChatMessage.find(query)
+          .populate('userId', 'nickname avatar')
+          .sort({ createdAt: -1 })
+          .limit(parseInt(limit, 10));
+
+        // Formatar mensagens
+        const formattedMessages = messages.reverse().map(msg => ({
+          _id: msg._id,
+          userId: msg.userId._id,
+          nickname: msg.userId.nickname,
+          avatar: msg.userId.avatar || '',
+          message: msg.message,
+          type: msg.type,
+          gameId: msg.gameId,
+          createdAt: msg.createdAt,
+        }));
+
+        socket.emit('chat:history', { messages: formattedMessages });
+        logger.debug(`Histórico de chat enviado para ${userId} (type: ${type}, count: ${formattedMessages.length})`);
+      } catch (error) {
+        logger.error(`Erro no evento chat:history: ${error.message}`);
+        socket.emit('chat:error', { message: error.message });
       }
     });
 

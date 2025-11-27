@@ -6,8 +6,9 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import Avatar from '../components/Avatar';
 import Loader from '../components/Loader';
-import Input from '../components/Input';
 import QueueStatus from '../components/QueueStatus';
+import ChatBox from '../components/ChatBox';
+import socket from '../services/socket';
 import SoloGameMenu from '../components/SoloGameMenu';
 
 const Lobby = () => {
@@ -20,26 +21,48 @@ const Lobby = () => {
   const [messageInput, setMessageInput] = useState('');
   const [showSoloMenu, setShowSoloMenu] = useState(false);
 
+  // Garantir que o socket tenha userId quando conectar
+  useEffect(() => {
+    if (socket.connected && user?.id && !socket.userId) {
+      socket.userId = user.id || user._id;
+    }
+  }, [user, socket.connected]);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      // Fetch recent matches (mock data for now)
-      setRecentMatches([
-        { id: 1, opponent: 'Player2', result: 'Vitória', score: 150, date: '2025-11-23' },
-        { id: 2, opponent: 'Player3', result: 'Derrota', score: 80, date: '2025-11-22' },
-        { id: 3, opponent: 'Player4', result: 'Vitória', score: 120, date: '2025-11-21' },
-      ]);
+      // Fetch recent matches from API
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const matchesResponse = await fetch(
+            `${import.meta.env.VITE_API_URL}/users/me/matches/recent`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (matchesResponse.ok) {
+            const matchesResult = await matchesResponse.json();
+            setRecentMatches(matchesResult.data || []);
+          }
+        } catch (error) {
+          console.warn('Erro ao buscar partidas recentes:', error);
+          setRecentMatches([]);
+        }
+      }
 
       // Fetch top 10 ranking
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/ranking?limit=10`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/users/ranking?limit=10`);
       if (response.ok) {
         const data = await response.json();
         setTopPlayers(data.data || []);
       } else {
-        // Mock data
+        // Mock data fallback
         setTopPlayers([
           { id: 1, nickname: 'Player1', score: 1500, avatar: '' },
           { id: 2, nickname: 'Player2', score: 1450, avatar: '' },
@@ -47,11 +70,6 @@ const Lobby = () => {
         ]);
       }
 
-      // Mock chat messages
-      setChatMessages([
-        { id: 1, username: 'Player1', message: 'Alguém quer jogar?', timestamp: '14:30' },
-        { id: 2, username: 'Player2', message: 'Sim! Vamos!', timestamp: '14:31' },
-      ]);
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -63,23 +81,6 @@ const Lobby = () => {
     setShowSoloMenu(true);
   };
 
-  const handleSendMessage = e => {
-    e.preventDefault();
-    if (messageInput.trim()) {
-      // TODO: Implement Socket.io chat
-      const newMessage = {
-        id: chatMessages.length + 1,
-        username: user?.nickname || 'Você',
-        message: messageInput,
-        timestamp: new Date().toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-      setChatMessages([...chatMessages, newMessage]);
-      setMessageInput('');
-    }
-  };
 
   if (loading) {
     return (
@@ -134,7 +135,7 @@ const Lobby = () => {
                     className="w-full"
                     onClick={handlePlayVsBot}
                   >
-                    🤖 Jogar vs Bot
+                    🤖 Jogar com Bot
                   </Button>
                 </div>
               </Card>
@@ -215,7 +216,7 @@ const Lobby = () => {
                             {match.result}
                           </div>
                           <div className="text-sm text-gray-600 dark:text-gray-400">
-                            +{match.score} pts
+                            {match.score} pts
                           </div>
                         </div>
                       </div>
@@ -231,43 +232,14 @@ const Lobby = () => {
 
             {/* Right Column - Chat */}
             <div className="lg:col-span-3">
-              <Card padding="lg" className="h-[600px] flex flex-col">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                  💬 Chat Geral
-                </h3>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto space-y-3 mb-4">
-                  {chatMessages.map(msg => (
-                    <div key={msg.id} className="text-sm">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-semibold text-primary-600 dark:text-primary-400">
-                          {msg.username}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-500">
-                          {msg.timestamp}
-                        </span>
-                      </div>
-                      <p className="text-gray-700 dark:text-gray-300 mt-1">
-                        {msg.message}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Input */}
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <Input
-                    value={messageInput}
-                    onChange={e => setMessageInput(e.target.value)}
-                    placeholder="Digite sua mensagem..."
-                    className="flex-1"
-                  />
-                  <Button type="submit" variant="primary" size="sm">
-                    Enviar
-                  </Button>
-                </form>
-              </Card>
+              <div className="h-[600px]">
+                <ChatBox
+                  type="general"
+                  user={user}
+                  socket={socket}
+                  isOpen={true}
+                />
+              </div>
             </div>
           </div>
         </div>

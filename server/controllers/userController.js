@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Game from '../models/Game.js';
 
 /**
  * Get user by ID
@@ -48,15 +49,70 @@ export const getUserStats = async (req, res) => {
       });
     }
 
-    // TODO: Calculate real stats from Match model when implemented
+    // Buscar todas as partidas finalizadas do usuário
+    const finishedGames = await Game.find({
+      'players.userId': id,
+      status: 'finished',
+    }).sort({ finishedAt: -1 });
+
+    // Calcular estatísticas
+    const totalMatches = finishedGames.length;
+    let wins = 0;
+    let losses = 0;
+    let currentStreak = 0;
+    let bestStreak = 0;
+    let tempStreak = 0;
+
+    // Calcular vitórias, derrotas e best streak
+    finishedGames.forEach(game => {
+      const player = game.players.find(p => p.userId.toString() === id.toString());
+      if (!player) return;
+
+      const isWinner = player.team === game.winner;
+      
+      if (isWinner) {
+        wins++;
+        tempStreak++;
+        if (tempStreak > bestStreak) {
+          bestStreak = tempStreak;
+        }
+      } else {
+        losses++;
+        tempStreak = 0;
+      }
+    });
+
+    // Calcular current streak (vitórias consecutivas começando da partida mais recente)
+    for (const game of finishedGames) {
+      const player = game.players.find(p => p.userId.toString() === id.toString());
+      if (!player) continue;
+
+      const isWinner = player.team === game.winner;
+      
+      if (isWinner) {
+        currentStreak++;
+      } else {
+        // Streak quebrado, para de contar
+        break;
+      }
+    }
+
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+
+    // Calcular média de pontos (baseado no sistema de pontuação: +50 vitória, -20 derrota)
+    const baseWinPoints = 50;
+    const baseLosePoints = -20;
+    const totalPoints = wins * baseWinPoints + losses * baseLosePoints;
+    const avgScore = totalMatches > 0 ? Math.round(totalPoints / totalMatches) : 0;
+
     const stats = {
-      totalMatches: 0,
-      wins: 0,
-      losses: 0,
-      winRate: 0,
-      avgScore: 0,
-      currentStreak: 0,
-      bestStreak: 0,
+      totalMatches,
+      wins,
+      losses,
+      winRate,
+      avgScore,
+      currentStreak,
+      bestStreak,
     };
 
     res.status(200).json({
@@ -91,19 +147,71 @@ export const getUserMatches = async (req, res) => {
       });
     }
 
-    // TODO: Implement with Match model when available
-    const matches = [];
-    const total = 0;
+    // Buscar partidas finalizadas onde o usuário participou
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await Game.countDocuments({
+      'players.userId': id,
+      status: 'finished',
+    });
+
+    const games = await Game.find({
+      'players.userId': id,
+      status: 'finished',
+    })
+      .populate('players.userId', 'nickname avatar')
+      .sort({ finishedAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    // Formatar partidas para o frontend
+    const matches = games.map(game => {
+      const player = game.players.find(p => p.userId._id.toString() === id.toString());
+      const isWinner = player && player.team === game.winner;
+
+      // Encontrar oponentes (outros jogadores da equipe adversária)
+      const opponentTeam = player.team === 'red' ? 'blue' : 'red';
+      const opponents = game.players
+        .filter(p => p.team === opponentTeam)
+        .map(p => ({
+          nickname: p.userId?.nickname || 'Jogador',
+          avatar: p.userId?.avatar || '',
+        }));
+
+      // Calcular pontos ganhos/perdidos
+      const baseWinPoints = 50;
+      const baseLosePoints = -20;
+      const score = isWinner ? baseWinPoints : baseLosePoints;
+
+      // Formatar data
+      const date = game.finishedAt
+        ? new Date(game.finishedAt).toLocaleDateString('pt-BR')
+        : new Date(game.createdAt).toLocaleDateString('pt-BR');
+
+      return {
+        id: game._id.toString(),
+        opponent: opponents.length > 0 ? opponents[0].nickname : 'Oponente',
+        opponents: opponents,
+        result: isWinner ? 'Vitória' : 'Derrota',
+        score,
+        date,
+        finishedAt: game.finishedAt || game.createdAt,
+        team: player?.team || '',
+        winner: game.winner,
+      };
+    });
 
     res.status(200).json({
       success: true,
       data: {
         matches,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: pageNum,
+          limit: limitNum,
           total,
-          pages: Math.ceil(total / limit),
+          pages: Math.ceil(total / limitNum),
         },
       },
     });
@@ -186,6 +294,77 @@ export const updateUserProfile = async (req, res) => {
 };
 
 /**
+ * Get recent matches for logged user
+ * @route GET /api/users/me/matches/recent
+ */
+export const getRecentMatches = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuário não autenticado',
+      });
+    }
+
+    // Buscar últimas 3 partidas finalizadas
+    const games = await Game.find({
+      'players.userId': userId,
+      status: 'finished',
+    })
+      .populate('players.userId', 'nickname avatar')
+      .sort({ finishedAt: -1 })
+      .limit(3);
+
+    // Formatar partidas para o frontend
+    const matches = games.map(game => {
+      const player = game.players.find(p => p.userId._id.toString() === userId.toString());
+      const isWinner = player && player.team === game.winner;
+
+      // Encontrar oponentes (outros jogadores da equipe adversária)
+      const opponentTeam = player.team === 'red' ? 'blue' : 'red';
+      const opponents = game.players
+        .filter(p => p.team === opponentTeam)
+        .map(p => ({
+          nickname: p.userId?.nickname || 'Jogador',
+          avatar: p.userId?.avatar || '',
+        }));
+
+      // Calcular pontos ganhos/perdidos
+      const baseWinPoints = 50;
+      const baseLosePoints = -20;
+      const score = isWinner ? baseWinPoints : baseLosePoints;
+
+      // Formatar data
+      const date = game.finishedAt
+        ? new Date(game.finishedAt).toLocaleDateString('pt-BR')
+        : new Date(game.createdAt).toLocaleDateString('pt-BR');
+
+      return {
+        id: game._id.toString(),
+        opponent: opponents.length > 0 ? opponents[0].nickname : 'Oponente',
+        result: isWinner ? 'Vitória' : 'Derrota',
+        score,
+        date,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: matches,
+    });
+  } catch (error) {
+    console.error('Error in getRecentMatches:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar partidas recentes',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message }),
+    });
+  }
+};
+
+/**
  * Get ranking
  * @route GET /api/ranking
  */
@@ -213,21 +392,53 @@ export const getRanking = async (req, res) => {
       .sort({ score: -1 })
       .limit(parseInt(limit));
 
-    const ranking = users.map(user => ({
-      id: user._id,
-      nickname: user.nickname,
-      avatar: user.avatar,
-      score: user.score,
-      location: user.location,
-      role: user.role,
-      // TODO: Add stats when Match model is implemented
-      stats: {
-        totalMatches: 0,
-        wins: 0,
-        losses: 0,
-        winRate: 0,
-      },
-    }));
+    // Import Game model
+    const Game = (await import('../models/Game.js')).default;
+
+    // Calculate stats for each user
+    const ranking = await Promise.all(
+      users.map(async user => {
+        // Find all finished games where user participated
+        const finishedGames = await Game.find({
+          'players.userId': user._id,
+          status: 'finished',
+          winner: { $ne: '' }, // Only games with a winner
+        });
+
+        // Calculate statistics
+        let wins = 0;
+        let losses = 0;
+
+        finishedGames.forEach(game => {
+          const player = game.players.find(
+            p => p.userId.toString() === user._id.toString()
+          );
+          if (player && player.team === game.winner) {
+            wins++;
+          } else if (player) {
+            losses++;
+          }
+        });
+
+        const totalMatches = wins + losses;
+        const winRate = totalMatches > 0 ? ((wins / totalMatches) * 100).toFixed(1) : '0.0';
+
+        return {
+          id: user._id,
+          nickname: user.nickname,
+          avatar: user.avatar,
+          score: user.score,
+          location: user.location,
+          role: user.role,
+          stats: {
+            totalMatches,
+            wins,
+            losses,
+            winRate: parseFloat(winRate),
+          },
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
