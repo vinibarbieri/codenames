@@ -173,12 +173,15 @@ export const getUserMatches = async (req, res) => {
 
       // Encontrar oponentes (outros jogadores da equipe adversária)
       const opponentTeam = player.team === 'red' ? 'blue' : 'red';
-      const opponents = game.players
-        .filter(p => p.team === opponentTeam)
+      const opponentPlayers = game.players.filter(p => p.team === opponentTeam);
+      const opponents = opponentPlayers
         .map(p => ({
           nickname: p.userId?.nickname || 'Jogador',
           avatar: p.userId?.avatar || '',
         }));
+
+      // Verificar se é jogo contra bot (modo solo ou todos os oponentes são bots)
+      const isBotGame = game.mode === 'solo' || opponentPlayers.every(p => p.isBot === true);
 
       // Calcular pontos ganhos/perdidos
       const baseWinPoints = 50;
@@ -194,6 +197,7 @@ export const getUserMatches = async (req, res) => {
         id: game._id.toString(),
         opponent: opponents.length > 0 ? opponents[0].nickname : 'Oponente',
         opponents: opponents,
+        isBotGame,
         result: isWinner ? 'Vitória' : 'Derrota',
         score,
         date,
@@ -324,12 +328,15 @@ export const getRecentMatches = async (req, res) => {
 
       // Encontrar oponentes (outros jogadores da equipe adversária)
       const opponentTeam = player.team === 'red' ? 'blue' : 'red';
-      const opponents = game.players
-        .filter(p => p.team === opponentTeam)
+      const opponentPlayers = game.players.filter(p => p.team === opponentTeam);
+      const opponents = opponentPlayers
         .map(p => ({
           nickname: p.userId?.nickname || 'Jogador',
           avatar: p.userId?.avatar || '',
         }));
+
+      // Verificar se é jogo contra bot (modo solo ou todos os oponentes são bots)
+      const isBotGame = game.mode === 'solo' || opponentPlayers.every(p => p.isBot === true);
 
       // Calcular pontos ganhos/perdidos
       const baseWinPoints = 50;
@@ -345,6 +352,7 @@ export const getRecentMatches = async (req, res) => {
         id: game._id.toString(),
         opponent: opponents.length > 0 ? opponents[0].nickname : 'Oponente',
         opponents: opponents,
+        isBotGame,
         result: isWinner ? 'Vitória' : 'Derrota',
         score,
         date,

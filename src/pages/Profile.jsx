@@ -340,11 +340,13 @@ const Profile = () => {
                       </div>
                       <div>
                         <div className="font-semibold text-gray-900 dark:text-white">
-                          vs {match.opponents && match.opponents.length > 0
-                            ? match.opponents.length === 2
-                              ? `${match.opponents[0].nickname} & ${match.opponents[1].nickname}`
-                              : match.opponents[0].nickname
-                            : match.opponent || 'Oponente'}
+                          {match.isBotGame
+                            ? 'com bot'
+                            : `vs ${match.opponents && match.opponents.length > 0
+                              ? match.opponents.length === 2
+                                ? `${match.opponents[0].nickname} & ${match.opponents[1].nickname}`
+                                : match.opponents[0].nickname
+                              : match.opponent || 'Oponente'}`}
                         </div>
                         <div className="text-sm text-gray-600 dark:text-gray-400">
                           {match.date}
