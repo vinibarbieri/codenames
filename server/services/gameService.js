@@ -17,6 +17,19 @@ try {
 }
 
 /**
+ * Card distribution constants
+ */
+const TOTAL_CARDS = 25;
+const RED_WORD_COUNT = 8;
+const BLUE_WORD_COUNT = 8;
+const ASSASSIN_COUNT = 1;
+const NEUTRAL_WORD_COUNT = TOTAL_CARDS - (RED_WORD_COUNT + BLUE_WORD_COUNT + ASSASSIN_COUNT);
+
+if (NEUTRAL_WORD_COUNT <= 0) {
+  throw new Error('Invalid card distribution: neutral card count must be positive');
+}
+
+/**
  * Fisher-Yates shuffle algorithm
  * @param {Array} array - Array to shuffle
  * @returns {Array} Shuffled array
@@ -36,13 +49,13 @@ const shuffleArray = array => {
  */
 export const createGameBoard = () => {
   // Validate wordlist
-  if (!wordlist || wordlist.length < 25) {
+  if (!wordlist || wordlist.length < TOTAL_CARDS) {
     throw new Error('Wordlist must contain at least 25 words');
   }
 
   // Shuffle wordlist and pick 25 words
   const shuffledWords = shuffleArray(wordlist);
-  const selectedWords = shuffledWords.slice(0, 25).map(entry => {
+  const selectedWords = shuffledWords.slice(0, TOTAL_CARDS).map(entry => {
     if (typeof entry === 'string') return entry;
     if (entry && typeof entry === 'object') {
       if (entry.palavra) return entry.palavra;
@@ -51,13 +64,17 @@ export const createGameBoard = () => {
     throw new Error(`Invalid word entry in wordlist: ${JSON.stringify(entry)}`);
   });
 
-  // Create distribution: 9 red, 8 blue, 7 neutral, 1 assassin
+  // Create distribution: equal team counts with remaining neutrals and one assassin
   const types = [
-    ...Array(9).fill('red'),
-    ...Array(8).fill('blue'),
-    ...Array(7).fill('neutral'),
-    'assassin',
+    ...Array(RED_WORD_COUNT).fill('red'),
+    ...Array(BLUE_WORD_COUNT).fill('blue'),
+    ...Array(NEUTRAL_WORD_COUNT).fill('neutral'),
+    ...Array(ASSASSIN_COUNT).fill('assassin'),
   ];
+
+  if (types.length !== TOTAL_CARDS) {
+    throw new Error('Invalid card distribution: total cards must equal 25');
+  }
 
   // Shuffle types
   const shuffledTypes = shuffleArray(types);
@@ -157,24 +174,30 @@ export const checkGameResult = async (game, guessingTeam = null) => {
   const revealedBlue = game.board.filter(card => card.type === 'blue' && card.revealed).length;
 
   // Log de depuração
-  console.log(`[checkGameResult] Cartas reveladas - Vermelho: ${revealedRed}/9, Azul: ${revealedBlue}/8`);
+  console.log(
+    `[checkGameResult] Cartas reveladas - Vermelho: ${revealedRed}/${RED_WORD_COUNT}, Azul: ${revealedBlue}/${BLUE_WORD_COUNT}`,
+  );
 
   // Check for victory - quando uma equipe acerta todas as suas palavras (0 restantes), o jogo termina
-  if (revealedRed === 9) {
+  if (revealedRed === RED_WORD_COUNT) {
     game.winner = 'red';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
-    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Vermelha venceu (9/9 cartas reveladas)`);
+    console.log(
+      `[checkGameResult] ✅ Jogo finalizado: Equipe Vermelha venceu (${RED_WORD_COUNT}/${RED_WORD_COUNT} cartas reveladas)`,
+    );
     return game;
   }
 
-  if (revealedBlue === 8) {
+  if (revealedBlue === BLUE_WORD_COUNT) {
     game.winner = 'blue';
     game.status = 'finished';
     game.finishedAt = new Date();
     await game.save();
-    console.log(`[checkGameResult] ✅ Jogo finalizado: Equipe Azul venceu (8/8 cartas reveladas)`);
+    console.log(
+      `[checkGameResult] ✅ Jogo finalizado: Equipe Azul venceu (${BLUE_WORD_COUNT}/${BLUE_WORD_COUNT} cartas reveladas)`,
+    );
     return game;
   }
 
@@ -196,17 +219,25 @@ export const updatePlayerScores = async game => {
   const User = (await import('../models/User.js')).default;
 
   // Calculate points
-  const baseWinPoints = 10;
-  const baseLosePoints = 3;
-  const fastWinBonus = game.turnCount < 10 ? 5 : 0;
+  const baseWinPoints = 50;
+  const baseLosePoints = -20;
 
   // Update scores for all players
   const updatePromises = game.players.map(async player => {
     const isWinner = player.team === game.winner;
-    const points = isWinner ? baseWinPoints + fastWinBonus : baseLosePoints;
+    const points = isWinner ? baseWinPoints : baseLosePoints;
+
+    // Buscar o usuário atual para verificar a pontuação antes de atualizar
+    const user = await User.findById(player.userId);
+    if (!user) {
+      throw new Error(`User ${player.userId} not found`);
+    }
+
+    // Calcular nova pontuação e garantir que não fique negativa
+    const newScore = Math.max(0, (user.score || 0) + points);
 
     await User.findByIdAndUpdate(player.userId, {
-      $inc: { score: points },
+      $set: { score: newScore },
     });
   });
 

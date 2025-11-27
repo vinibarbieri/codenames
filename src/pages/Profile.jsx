@@ -33,46 +33,63 @@ const Profile = () => {
 
   useEffect(() => {
     fetchUserData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchUserData = async () => {
     try {
-      // Fetch user data (mock for now)
-      const userData = {
-        id,
-        nickname: isOwnProfile ? currentUser?.nickname : `Player${id}`,
-        email: isOwnProfile ? currentUser?.email : undefined,
-        avatar: isOwnProfile ? currentUser?.avatar : '',
-        score: Math.floor(Math.random() * 2000) + 500,
-        role: 'user',
-        location: {
-          city: 'São Paulo',
-          state: 'SP',
-          country: 'Brasil',
-        },
+      setLoading(true);
+      
+      // Fetch user data from API
+      const userResponse = await fetch(
+        `${import.meta.env.VITE_API_URL}/users/${id}`
+      );
+
+      if (!userResponse.ok) {
+        throw new Error('Erro ao buscar dados do usuário');
+      }
+
+      const userResult = await userResponse.json();
+      const userData = userResult.data;
+
+      // Fetch stats from API
+      let statsData = {
+        totalMatches: 0,
+        wins: 0,
+        losses: 0,
+        winRate: 0,
+        avgScore: 0,
+        currentStreak: 0,
+        bestStreak: 0,
       };
 
-      // Fetch stats (mock)
-      const statsData = {
-        totalMatches: 45,
-        wins: 28,
-        losses: 17,
-        winRate: 62.2,
-        avgScore: 125,
-        currentStreak: 3,
-        bestStreak: 8,
-      };
+      try {
+        const statsResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/${id}/stats`
+        );
+        if (statsResponse.ok) {
+          const statsResult = await statsResponse.json();
+          statsData = statsResult.data;
+        }
+      } catch (error) {
+        console.warn('Erro ao buscar estatísticas:', error);
+      }
 
-      // Fetch match history (mock)
-      const matchHistory = Array.from({ length: 25 }, (_, i) => ({
-        id: i + 1,
-        opponent: `Player${Math.floor(Math.random() * 100)}`,
-        result: Math.random() > 0.4 ? 'Vitória' : 'Derrota',
-        score: Math.floor(Math.random() * 200) + 50,
-        date: new Date(Date.now() - i * 86400000).toLocaleDateString('pt-BR'),
-      }));
+      // Fetch match history from API
+      let matchHistory = [];
+      try {
+        const matchesResponse = await fetch(
+          `${import.meta.env.VITE_API_URL}/users/${id}/matches`
+        );
+        if (matchesResponse.ok) {
+          const matchesResult = await matchesResponse.json();
+          matchHistory = matchesResult.data.matches || [];
+        }
+      } catch (error) {
+        console.warn('Erro ao buscar histórico de partidas:', error);
+      }
 
-      // Fetch recordings (mock)
+      // Fetch recordings (mock for now - TODO: implement when recording system is ready)
       const recordingsList = Array.from({ length: 6 }, (_, i) => ({
         id: i + 1,
         title: `Partida épica #${i + 1}`,
@@ -81,16 +98,28 @@ const Profile = () => {
         views: Math.floor(Math.random() * 1000),
       }));
 
-      setUser(userData);
+      setUser({
+        id: userData.id,
+        nickname: userData.nickname,
+        email: isOwnProfile ? userData.email : undefined,
+        avatar: userData.avatar || '',
+        score: userData.score || 0,
+        role: userData.role || 'user',
+        location: userData.location || {
+          city: '',
+          state: '',
+          country: '',
+        },
+      });
       setStats(statsData);
       setMatches(matchHistory);
       setRecordings(recordingsList);
       setEditForm({
         nickname: userData.nickname,
-        city: userData.location.city,
-        state: userData.location.state,
-        country: userData.location.country,
-        avatar: userData.avatar,
+        city: userData.location?.city || '',
+        state: userData.location?.state || '',
+        country: userData.location?.country || '',
+        avatar: userData.avatar || '',
       });
     } catch (error) {
       console.error('Erro ao buscar dados do usuário:', error);
