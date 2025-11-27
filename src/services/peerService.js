@@ -197,6 +197,24 @@ class PeerService {
   }
 
   /**
+   * Registra callback para chamadas recebidas (video/audio)
+   */
+  onCall(callback) {
+    if (this.peer) {
+      this.peer.on('call', callback);
+    }
+  }
+
+  /**
+   * Remove callback de chamadas
+   */
+  offCall(callback) {
+    if (this.peer) {
+      this.peer.off('call', callback);
+    }
+  }
+
+  /**
    * Obtém o ID do peer atual
    */
   getPeerId() {
