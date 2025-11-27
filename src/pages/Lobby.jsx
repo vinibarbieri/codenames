@@ -9,6 +9,7 @@ import Loader from '../components/Loader';
 import QueueStatus from '../components/QueueStatus';
 import ChatBox from '../components/ChatBox';
 import socket from '../services/socket';
+import SoloGameMenu from '../components/SoloGameMenu';
 
 const Lobby = () => {
   const { user } = useAuth();
@@ -16,6 +17,9 @@ const Lobby = () => {
   const [recentMatches, setRecentMatches] = useState([]);
   const [topPlayers, setTopPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [messageInput, setMessageInput] = useState('');
+  const [showSoloMenu, setShowSoloMenu] = useState(false);
 
   // Garantir que o socket tenha userId quando conectar
   useEffect(() => {
@@ -73,10 +77,8 @@ const Lobby = () => {
     }
   };
 
-
   const handlePlayVsBot = () => {
-    // TODO: Implement bot game creation
-    alert('Funcionalidade em desenvolvimento');
+    setShowSoloMenu(true);
   };
 
 
@@ -133,7 +135,7 @@ const Lobby = () => {
                     className="w-full"
                     onClick={handlePlayVsBot}
                   >
-                    🤖 Jogar vs Bot
+                    🤖 Jogar com Bot
                   </Button>
                 </div>
               </Card>
@@ -192,7 +194,7 @@ const Lobby = () => {
                       >
                         <div className="flex items-center gap-4">
                           <div className="text-2xl">
-                            {match.result === 'Vitória' ? '🏆' : '😔'}
+                            {match.result === 'Vitória' ? '🏆' : '😢'}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900 dark:text-white">
@@ -242,6 +244,12 @@ const Lobby = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal de Jogo Solo */}
+      <SoloGameMenu
+        isOpen={showSoloMenu}
+        onClose={() => setShowSoloMenu(false)}
+      />
     </Layout>
   );
 };

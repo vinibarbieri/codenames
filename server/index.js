@@ -13,10 +13,15 @@ import chatRoutes from './routes/chatRoutes.js';
 import initializeSocketIO from './socket/index.js';
 import { startCleanupCronjob } from './services/chatCleanupService.js';
 import { authenticateSocket } from './middleware/socketAuth.js';
+import soloGameRoutes from './routes/soloGameRoutes.js';
 
 dotenv.config({ path: '../.env' });
 
 const app = express();
+app.use((req, res, next) => {
+  console.log("ROTA RECEBIDA:", req.method, req.url);
+  next();
+});
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
 
@@ -65,6 +70,8 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -99,6 +106,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/games/solo', soloGameRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/chat', chatRoutes);
 

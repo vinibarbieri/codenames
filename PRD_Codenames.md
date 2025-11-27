@@ -408,7 +408,7 @@ Aplicação web multiplayer do jogo Codenames com autenticação de usuários, s
 - Perfil do usuário (avatar, nome, pontuação)
 - Botão "Entrar na Fila"
 - Status da fila (posição, tempo estimado)
-- Botão "Jogar vs Bot"
+- Botão "Jogar com Bot"
 - Lista de partidas recentes
 - Ranking lateral (top 10)
 - Chat geral

@@ -26,6 +26,7 @@ const ScoreBoard = ({
   turnCount,
   timerSeconds = 60,
   onTimerExpire,
+  mode,
 }) => {
   const [timeLeft, setTimeLeft] = useState(timerSeconds);
   const prevTurnCountRef = useRef(turnCount);
@@ -33,16 +34,24 @@ const ScoreBoard = ({
 
   // Resetar timer quando turnCount muda
   useEffect(() => {
+
+
+    // Para SOLO, não resetamos nem controlamos timeout (somente visual).
+    if (mode === "solo") return;
+
     if (prevTurnCountRef.current !== turnCount && turnCount !== undefined) {
       prevTurnCountRef.current = turnCount;
       hasExpiredRef.current = false;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTimeLeft(timerSeconds);
     }
-  }, [turnCount, timerSeconds]);
+  }, [turnCount, timerSeconds, mode]);
 
   // Countdown do timer
   useEffect(() => {
+
+    if (mode === "solo") return;
+
     if (timeLeft <= 0 && !hasExpiredRef.current) {
       hasExpiredRef.current = true;
       onTimerExpire?.();
@@ -64,7 +73,7 @@ const ScoreBoard = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeLeft, onTimerExpire]);
+  }, [timeLeft, onTimerExpire, mode]);
 
   const formatTime = seconds => {
     const mins = Math.floor(seconds / 60);
