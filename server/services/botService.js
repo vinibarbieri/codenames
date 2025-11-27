@@ -2,10 +2,7 @@
  * Bot Service - Serviço de IA para jogar Codenames
  * Usa embeddings de palavras e lógica heurística para gerar dicas e palpites
  */
-
-
-
-
+import wordlist from '../data/wordlist.json' assert { type: 'json' };
 
 
 /**
@@ -23,6 +20,146 @@ const calculateSimilarity = (word1, word2) => {
   // Conta letras em comum
   const commonChars = [...new Set(w1)].filter(char => w2.includes(char)).length;
   return commonChars / Math.max(w1.length, w2.length) * 0.5;
+};
+
+const normalizeText = (text = '') =>
+  text
+    .toString()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+
+const WORD_HINTS_MAP = new Map(
+  wordlist
+    .map(entry => {
+      if (typeof entry === 'string') {
+        return [normalizeText(entry), []];
+      }
+      if (entry && typeof entry === 'object') {
+        const word = entry.palavra || entry.word;
+        if (!word) {
+          return null;
+        }
+        return [normalizeText(word), entry.dicas || []];
+      }
+      return null;
+    })
+    .filter(Boolean),
+);
+
+const getHintsForWord = (word = '') => WORD_HINTS_MAP.get(normalizeText(word)) || [];
+
+const buildHintCandidates = (cards) => {
+  const candidates = new Map();
+
+  cards.forEach(card => {
+    const hints = getHintsForWord(card.word);
+    hints.forEach(hint => {
+      const normalizedHint = normalizeText(hint);
+      if (!candidates.has(normalizedHint)) {
+        candidates.set(normalizedHint, { hint, normalizedHint, cards: [] });
+      }
+      candidates.get(normalizedHint).cards.push(card);
+    });
+  });
+
+  return candidates;
+};
+
+const getDangerousHints = (cards) => {
+  const dangerousHints = new Set();
+  cards.forEach(card => {
+    getHintsForWord(card.word).forEach(hint => {
+      dangerousHints.add(normalizeText(hint));
+    });
+  });
+  return dangerousHints;
+};
+
+const pickHintClue = (teamCards, dangerousCards, targetCount) => {
+  const candidatesMap = buildHintCandidates(teamCards);
+  if (!candidatesMap.size) {
+    const fallbackCard = teamCards.find(card => getHintsForWord(card.word).length > 0);
+    if (fallbackCard) {
+      const fallbackHint = getHintsForWord(fallbackCard.word)[0];
+      if (fallbackHint) {
+        return {
+          word: fallbackHint.toUpperCase(),
+          number: 1,
+        };
+      }
+    }
+    return null;
+  }
+
+  const candidates = [...candidatesMap.values()];
+  const dangerousHints = getDangerousHints(dangerousCards);
+
+  candidates.sort((a, b) => {
+    const coverageA = Math.min(a.cards.length, targetCount);
+    const coverageB = Math.min(b.cards.length, targetCount);
+    if (coverageA === coverageB) {
+      return b.cards.length - a.cards.length;
+    }
+    return coverageB - coverageA;
+  });
+
+  const chosen =
+    candidates.find(candidate => !dangerousHints.has(candidate.normalizedHint)) ||
+    candidates[0];
+
+  if (!chosen) {
+    return null;
+  }
+
+  const number = Math.max(1, Math.min(targetCount, chosen.cards.length));
+  return {
+    word: chosen.hint.toUpperCase(),
+    number,
+  };
+};
+
+const findHintBasedGuess = (availableCards, clueWord = '', team) => {
+  if (!clueWord) {
+    return null;
+  }
+
+  const normalizedClue = normalizeText(clueWord);
+  let bestMatch = null;
+
+  availableCards.forEach(card => {
+    const hints = getHintsForWord(card.word);
+    if (!hints.length) return;
+
+    let bestHintScore = 0;
+
+    hints.forEach(hint => {
+      const normalizedHint = normalizeText(hint);
+      if (normalizedHint === normalizedClue) {
+        bestHintScore = Math.max(bestHintScore, 3);
+      } else if (
+        normalizedHint.includes(normalizedClue) ||
+        normalizedClue.includes(normalizedHint)
+      ) {
+        bestHintScore = Math.max(bestHintScore, 2.2);
+      } else {
+        const similarity = calculateSimilarity(normalizedHint, normalizedClue);
+        if (similarity > 0.5) {
+          bestHintScore = Math.max(bestHintScore, 1 + similarity);
+        }
+      }
+    });
+
+    if (bestHintScore > 0) {
+      const score = bestHintScore + (card.type === team ? 0.3 : 0);
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = { score, index: card.index };
+      }
+    }
+  });
+
+  return bestMatch ? bestMatch.index : null;
 };
 
 /**
@@ -78,9 +215,10 @@ export const generateBotClue = async (board, team, difficulty = 'medium') => {
     }
     
    
-    // if (openai && process.env.USE_OPENAI_FOR_CLUES === 'true') {
-    //   return await generateClueWithOpenAI(teamCards, dangerousCards, targetCount, team);
-    // }
+    const hintClue = pickHintClue(teamCards, dangerousCards, targetCount);
+    if (hintClue) {
+      return hintClue;
+    }
     
     // Fallback: lógica simples baseada em heurística
     return generateClueHeuristic(teamCards, dangerousCards, targetCount);
@@ -165,14 +303,17 @@ const generateClueHeuristic = (teamCards, dangerousCards, targetCount) => {
  */
 export const generateBotGuess = async (board, clue, team, difficulty = 'medium') => {
   try {
-
-
     const availableCards = board
       .map((card, index) => ({ ...card, index }))
       .filter(card => !card.revealed);
     
     if (availableCards.length === 0) {
       throw new Error('Nenhuma carta disponível');
+    }
+    
+    const hintBasedGuessIndex = findHintBasedGuess(availableCards, clue?.word, team);
+    if (hintBasedGuessIndex !== null && hintBasedGuessIndex !== undefined) {
+      return hintBasedGuessIndex;
     }
     
     
@@ -227,7 +368,6 @@ export const generateBotGuess = async (board, clue, team, difficulty = 'medium')
  */
 const generateGuessHeuristic = (availableCards, clue, team, difficulty) => {
   // Calcular similaridade de cada carta com a dica
-  console.log("availableCards:", availableCards);
   const scores = availableCards.map(card => ({
     ...card,
     similarity: calculateSimilarity(card.word, clue.word),
@@ -243,13 +383,11 @@ const generateGuessHeuristic = (availableCards, clue, team, difficulty) => {
   if (Math.random() < noise) {
     // Escolher carta aleatória (simular erro)
     const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-    console.log("Guess: ", randomCard)
     return randomCard.index;
   }
   
   // Escolher carta com maior similaridade
   scores.sort((a, b) => b.similarity - a.similarity);
-  console.log("Guess: ", scores[0])
   return scores[0].index;
 };
 

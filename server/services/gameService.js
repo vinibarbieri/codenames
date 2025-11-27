@@ -42,7 +42,14 @@ export const createGameBoard = () => {
 
   // Shuffle wordlist and pick 25 words
   const shuffledWords = shuffleArray(wordlist);
-  const selectedWords = shuffledWords.slice(0, 25);
+  const selectedWords = shuffledWords.slice(0, 25).map(entry => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object') {
+      if (entry.palavra) return entry.palavra;
+      if (entry.word) return entry.word;
+    }
+    throw new Error(`Invalid word entry in wordlist: ${JSON.stringify(entry)}`);
+  });
 
   // Create distribution: 9 red, 8 blue, 7 neutral, 1 assassin
   const types = [
