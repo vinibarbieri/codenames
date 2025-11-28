@@ -72,7 +72,7 @@ const GameCard = ({ word, revealed, type, onClick, disabled = false, isShaking =
       disabled={disabled || revealed}
       className={`
         relative w-full aspect-square rounded-lg border-2 transition-all duration-300
-        ${revealed ? `${bgColor} ${textColor} border-gray-600 ${revealedOpacityForSpymaster}` : showType ? `${bgColor} ${textColor} border-gray-400` : 'bg-amber-100 dark:bg-amber-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100'}
+        ${revealed ? `${bgColor} ${textColor} border-gray-600 ${revealedOpacityForSpymaster}` : showType ? `${bgColor} ${textColor} border-gray-400` : 'bg-amber-700 dark:bg-amber-900 border-amber-900 dark:border-amber-700 text-amber-900 dark:text-amber-100'}
         ${disabled || revealed ? `cursor-not-allowed` : 'cursor-pointer hover:scale-105 hover:shadow-lg active:scale-95'}
         ${isFlipping ? 'animate-flip' : ''}
         ${isShaking ? 'animate-shake' : ''}
